@@ -98,24 +98,56 @@ Follow the development guide when implementing. The rules that are easy to get w
 - **Observability:** emit the SRE signals the Stage 8 doc consumes — queue depth, consumer lag, handler
   success/failure, retry/DLQ counts — plus OTel spans per message handler.
 
-## Engineering principles (apply to all code you add)
+## Engineering standards (house rules — apply to all code you add)
 
-- **Feature-first, not layer-first.** Organize by domain (mirroring the api's bounded contexts) — a module
-  owns its `*.handler` · `*.schema` · service · repository together. Never add top-level technical-layer
-  folders (`handlers/`, `services/`); channel clients live in `common/providers`, injected.
-- **SOLID — especially SRP & Dependency Inversion.** One reason to change per class; a handler depends on
-  **abstractions** — injected provider/repository interfaces (email/sms/calendar) — never on concretions.
-- **Thin handlers · orchestration-focused services · data-only repositories.** A handler validates the
-  message (tolerant reader) and delegates; services hold the workflow; repositories do **only** read-model
-  access.
-- **Keep domain/business logic out of infrastructure.** The workflow must not touch AMQP/SMTP/DB specifics
-  directly — reach them through injected ports.
-- **Side effects run through injected providers, idempotently.** This service *is* the side-effect path —
-  keep each handler focused on decode → validate → delegate → ack, deduped on event id.
-- **Small functions — aim for ≤ 10 lines.** Extract helpers; a function should read as a short list of
-  intent-level steps.
-- **One level of abstraction per function.** Don't mix high-level orchestration and low-level detail in the
-  same function.
+Built for long-term maintainability. **Priority order** (never sacrifice architecture for short-term
+speed): **Correctness → Maintainability → Readability → Testability → Performance → DX.** The canonical,
+exhaustive version is [development-guide.md → Appendix A](../eventa-docs/05-development/development-guide.md);
+this is the enforced summary, tailored to the consumer service. (Stack-adapted — Drizzle, not TypeORM.)
+
+**SOLID & responsibilities**
+- **Single Responsibility** — one job per class: `*.handler` = decode/validate/delegate/ack; service =
+  workflow orchestration; repository = read-model DB access; provider = a channel (email/sms/calendar);
+  `*.schema` = message validation. Never mix.
+- **Dependency Inversion** — handlers/services depend on **abstractions**: injected provider + repository
+  interfaces (from `common/providers`), never on concrete SMTP/AMQP/DB clients.
+- **Open/Closed** — extend via strategy/polymorphism (e.g. a provider registry), not long `if/else`.
+
+**Structure & layering**
+- **Feature-first** — `src/modules/<domain>/` mirrors the api's bounded contexts; a module owns its
+  `*.handler` · `*.schema` · service · repository. **Never** top-level `handlers/`·`services/` layer folders;
+  channel clients live in `common/providers`, injected.
+- **Thin handlers** — a handler only: parse → **validate (tolerant reader / zod)** → delegate → ack; on
+  failure nack → retry → DLQ. **No business logic** inline.
+- **Services orchestrate**; **repositories** do only agreed read-model access (this service does **not** own
+  the schema — `eventa-api` does).
+- **DTOs/schemas at the edge** — validate every message with its zod schema; never trust the wire shape.
+
+**Domain & correctness**
+- **Idempotent handlers** — dedupe on event/message id; a redelivery produces no second effect.
+- **Custom, meaningful exceptions**; **enums over magic strings**, **constants over magic numbers**.
+- **Side effects run through injected providers** — the service *is* the side-effect path; keep the core of
+  each handler focused and delegate email/SMS/calendar to providers.
+- **Transactions** for multi-row read-model writes.
+
+**Cross-cutting**
+- **Config only via `ConfigService`** — never read `process.env` directly.
+- **Logging via the Nest/pino `Logger`** — never `console.log`; propagate the **correlation id** off the
+  message into logs/spans. Never log secrets/tokens.
+- **DI budget** — >~6 injected deps is a smell; split. **No circular deps.**
+- **Infrastructure behind adapters** — workflow code must not import SMTP/AMQP/DB clients directly.
+
+**Methods, TypeScript, naming**
+- **Small methods** — house target **≤ 10 lines**, ~40 hard ceiling; one level of abstraction each.
+- **TypeScript** — `readonly`, async/await, optional chaining, nullish coalescing; avoid `any`, `@ts-ignore`,
+  nested ternaries, deep nesting. *(tsconfig is only partly strict today — full `strict` is the target.)*
+- **Explicit names** (`OrderConfirmedHandler`, `EmailProvider`); avoid `Helper`/`Util`/`Manager`.
+
+**Review checklist:** SRP/SOLID · no dup · no magic strings/numbers · tolerant-reader validation · idempotency
+· meaningful exceptions · correlation-id propagation · no business logic in handlers · tests updated.
+
+**When unsure** — prefer maintainability over clever code; **ask before architectural changes**; don't
+refactor unrelated code while implementing a feature.
 
 ## Contract with `eventa-api` (no shared package)
 
