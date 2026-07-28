@@ -134,6 +134,12 @@ this is the enforced summary, tailored to the consumer service. (Stack-adapted �
 **Domain & correctness**
 - **Idempotent handlers** — dedupe on event/message id; a redelivery produces no second effect.
 - **Custom, meaningful exceptions**; **enums over magic strings**, **constants over magic numbers**.
+- **No hard-coding** — never inline a literal that has a canonical home. Magic strings → enums / union
+  constants; magic numbers (retry counts, TTLs, prefetch, backoff) → module-level `const`; queue,
+  exchange, routing-key and DLQ names, Redis key prefixes, URLs, credentials → `ConfigService` (zod `Env`)
+  or a shared constants module, **never** a bare string or `process.env` in handler code. Event **routing
+  keys and payload field names come from the shared contract** (the producer's `*.event.ts` / the zod
+  schema), never re-typed literals. If a literal appears twice, or carries meaning, name it once.
 - **Side effects run through injected providers** — the service *is* the side-effect path; keep the core of
   each handler focused and delegate email/SMS/calendar to providers.
 - **Transactions** for multi-row read-model writes.
