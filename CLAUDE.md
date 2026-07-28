@@ -11,10 +11,16 @@ that must never sit on the checkout critical path: email/SMS, calendar invites, 
 builds, search indexing. It does **not** own the write model or the checkout/money path — those live in
 `eventa-api`.
 
-Right now this repo is a **fresh NestJS 11 + TypeScript scaffold** — only `app.module/controller/service`
-exist (a plain HTTP app) and no consumer code has been written yet. The only runtime deps installed are
-Nest core + rxjs; the target stack (`@nestjs/microservices` + a RabbitMQ transport, `zod`, a Postgres
-client for read-model writes) is **not installed yet**.
+**The foundation + first consumer are built** (on branch `feat/worker-foundation`): zod-validated config,
+pino logging, a global Drizzle `DatabaseModule` (a typed *view* of `audit_events` — **eventa-api owns the
+schema/migrations**), a Redis `IdempotencyService`, and the RabbitMQ layer — `RabbitConnection` (**amqplib
+directly**, not `@nestjs/microservices`, to interoperate with the outbox's topic-exchange + routing keys)
+plus `ConsumerService` (asserts a topic exchange + queue + DLX/DLQ, discovers handlers via
+`DiscoveryService`, dispatches by routing key with SET-NX dedupe, tolerant-reader zod validation, and
+nack→DLQ). First handler: `modules/identity/signed-in.handler` writes the sign-in audit. Health probes at
+`/health/{live,ready}`. Installed stack: `amqplib`, `ioredis`, `drizzle-orm`/`pg`, `@nestjs/config`, `zod`,
+`nestjs-pino`. New consumers = a `ValidatedHandler` subclass in a domain module (no wiring needed —
+DiscoveryService finds it).
 
 The build plan is **not in this repo** — it lives in the sibling SDLC docs at **`../eventa-docs`**. Read
 these before adding anything:
@@ -68,9 +74,11 @@ validation** (malformed / unknown-field / wrong-`version` payloads are handled, 
 - **ESLint is type-aware** (`recommendedTypeChecked` + `projectService`); `no-floating-promises` and
   `no-unsafe-argument` are **warnings** — heed them, message handlers are all async. `module: nodenext`,
   `target: ES2023`.
-- The scaffold currently boots a **plain HTTP app**; the target `main.ts` is a **consumer bootstrap**
-  (NestJS microservice with a RabbitMQ transport), likely retaining a minimal HTTP surface only for k8s
-  liveness/readiness probes.
+- `main.ts` boots a **minimal HTTP app** (health probes only); the **RabbitMQ consumer starts on
+  application bootstrap** (`ConsumerService.onApplicationBootstrap`), not via a Nest microservice transport.
+- **TypeScript is full `strict`**; `no-explicit-any` is off but the type-aware `no-unsafe-*` rules apply.
+- The integration test (`test/consumer.e2e-spec.ts`) needs the **shared docker infra up** (from
+  `../eventa-api`) with migrations applied — it publishes to an isolated `*.test` exchange/queue.
 - Prettier: **single quotes, trailing commas everywhere**.
 
 ## Target architecture (from the docs — governs code you add, but not yet built here)
