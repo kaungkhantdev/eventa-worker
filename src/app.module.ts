@@ -8,6 +8,7 @@ import type { Env } from './config/env.validation';
 import { buildLoggerOptions } from './config/logger.config';
 import { DatabaseModule } from './db/database.module';
 import { HealthModule } from './health/health.module';
+import { EventsModule } from './modules/events/events.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
 
@@ -24,6 +25,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     IdempotencyModule,
     RabbitmqModule,
     IdentityModule,
+    EventsModule,
     HealthModule,
   ],
 })
