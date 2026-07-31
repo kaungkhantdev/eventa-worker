@@ -123,9 +123,16 @@ this is the enforced summary, tailored to the consumer service. (Stack-adapted �
 - **Open/Closed** — extend via strategy/polymorphism (e.g. a provider registry), not long `if/else`.
 
 **Structure & layering**
-- **Feature-first** — `src/modules/<domain>/` mirrors the api's bounded contexts; a module owns its
-  `*.handler` · `*.schema` · service · repository. **Never** top-level `handlers/`·`services/` layer folders;
-  channel clients live in `common/providers`, injected.
+- **Feature-first, never layer-first** — `src/modules/<name>/` mirrors the api's module names; a module owns
+  its `*.handler` · `*.schema` · service · repository. **Never** top-level `handlers/`·`services/` folders;
+  channel clients live in `common/providers`, injected. The full layout and rules are in **Creating a
+  module** below; follow it whenever you add one.
+
+- **Thin handlers** — a handler only: parse → **validate (tolerant reader / zod)** → delegate → ack; on
+  failure nack → retry → DLQ. **No business logic** inline.
+- **Services orchestrate**; **repositories** do only agreed read-model access (this service does **not** own
+  the schema — `eventa-api` does).
+- **DTOs/schemas at the edge** — validate every message with its zod schema; never trust the wire shape.
 
 ### Creating a module (follow this exactly — mirrors eventa-api)
 
@@ -170,11 +177,6 @@ which api context it mirrors.
 **7. Ship it with tests (TDD).** `*.spec.ts` beside the handler (mock the ports); `test/*.e2e-spec.ts`
 publishes a real message through the docker stack and asserts the effect — that is what proves the binding,
 the DI graph and the dedupe actually work.
-- **Thin handlers** — a handler only: parse → **validate (tolerant reader / zod)** → delegate → ack; on
-  failure nack → retry → DLQ. **No business logic** inline.
-- **Services orchestrate**; **repositories** do only agreed read-model access (this service does **not** own
-  the schema — `eventa-api` does).
-- **DTOs/schemas at the edge** — validate every message with its zod schema; never trust the wire shape.
 
 **Domain & correctness**
 - **Idempotent handlers** — dedupe on event/message id; a redelivery produces no second effect.
