@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
+import { EmailModule } from './common/email/email.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { AppConfigModule } from './config/config.module';
 import type { Env } from './config/env.validation';
@@ -19,6 +20,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
         buildLoggerOptions(config),
     }),
     DatabaseModule,
+    EmailModule,
     IdempotencyModule,
     RabbitmqModule,
     IdentityModule,
