@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
+import { IdempotencyService } from '../../common/idempotency/idempotency.service';
 import {
   type MessageContext,
   ValidatedHandler,
@@ -32,6 +33,7 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
   constructor(
     private readonly recipients: EventRecipientsRepository,
     private readonly email: EmailProvider,
+    private readonly idempotency: IdempotencyService,
   ) {
     super();
   }
@@ -44,6 +46,9 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
       payload.organizationId,
       payload.eventId,
     );
+    const ledger = ctx.messageId
+      ? this.idempotency.recipientLedger(ctx.messageId)
+      : undefined;
     const { sent, failed } = await deliverToEach(
       this.email,
       recipients,
@@ -52,6 +57,7 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
         subject: `${SUBJECT_PREFIX}${payload.name}`,
         text: this.body(r.name, payload.name, payload.reason),
       }),
+      ledger,
     );
     this.logger.log(
       {

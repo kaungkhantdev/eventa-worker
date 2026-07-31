@@ -2,6 +2,10 @@ import type {
   EmailMessage,
   EmailProvider,
 } from '../../common/email/email.provider';
+import type {
+  IdempotencyService,
+  SentLedger,
+} from '../../common/idempotency/idempotency.service';
 import type { MessageContext } from '../../rabbitmq/message-handler.interface';
 import { AttendeesEmailHandler } from './attendees-email.handler';
 import type {
@@ -26,10 +30,30 @@ const rawEvent = {
   occurredAt: '2026-07-31T00:00:00.000Z',
 };
 
+/** Idempotency stub backing recipientLedger() with a shared in-memory Set. */
+function stubIdempotency(seed: string[] = []): {
+  idempotency: IdempotencyService;
+  ledgerStore: Set<string>;
+} {
+  const ledgerStore = new Set<string>(seed);
+  const ledger: SentLedger = {
+    wasSent: (key) => Promise.resolve(ledgerStore.has(key)),
+    markSent: (key) => {
+      ledgerStore.add(key);
+      return Promise.resolve();
+    },
+  };
+  const idempotency = {
+    recipientLedger: jest.fn(() => ledger),
+  } as unknown as IdempotencyService;
+  return { idempotency, ledgerStore };
+}
+
 describe('AttendeesEmailHandler', () => {
   let sent: EmailMessage[];
   let email: EmailProvider;
   let recipients: jest.Mocked<EventRecipientsRepository>;
+  let idempotency: IdempotencyService;
   let handler: AttendeesEmailHandler;
 
   beforeEach(() => {
@@ -43,7 +67,8 @@ describe('AttendeesEmailHandler', () => {
     recipients = {
       confirmedRecipients: jest.fn(),
     } as unknown as jest.Mocked<EventRecipientsRepository>;
-    handler = new AttendeesEmailHandler(recipients, email);
+    idempotency = stubIdempotency().idempotency;
+    handler = new AttendeesEmailHandler(recipients, email, idempotency);
   });
 
   it('subscribes to the broadcast routing key', () => {
@@ -69,6 +94,21 @@ describe('AttendeesEmailHandler', () => {
     recipients.confirmedRecipients.mockResolvedValue([]);
     await handler.handle(rawEvent, ctx);
     expect(email.send).not.toHaveBeenCalled();
+  });
+
+  it('does not re-mail a recipient already recorded as sent (idempotent re-entry)', async () => {
+    // A prior interrupted run already emailed anan; only ben's send remains.
+    const seeded = stubIdempotency(['anan@x.test']);
+    handler = new AttendeesEmailHandler(recipients, email, seeded.idempotency);
+    recipients.confirmedRecipients.mockResolvedValue([
+      { email: 'anan@x.test', name: 'Anan' },
+      { email: 'ben@x.test', name: 'Ben' },
+    ] satisfies Recipient[]);
+
+    await handler.handle(rawEvent, ctx);
+
+    expect(sent.map((m) => m.to)).toEqual(['ben@x.test']);
+    expect(seeded.ledgerStore.has('ben@x.test')).toBe(true);
   });
 
   it('keeps mailing the rest when one recipient fails, then dead-letters (throws)', async () => {

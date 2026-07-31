@@ -16,8 +16,9 @@ pino logging, a global Drizzle `DatabaseModule` (a typed *view* of `audit_events
 schema/migrations**), a Redis `IdempotencyService`, and the RabbitMQ layer — `RabbitConnection` (**amqplib
 directly**, not `@nestjs/microservices`, to interoperate with the outbox's topic-exchange + routing keys)
 plus `ConsumerService` (asserts a topic exchange + queue + DLX/DLQ, discovers handlers via
-`DiscoveryService`, dispatches by routing key with SET-NX dedupe, tolerant-reader zod validation, and
-nack→DLQ). First handler: `modules/identity/signed-in.handler` writes the sign-in audit. Health probes at
+`DiscoveryService`, dispatches by routing key with dedupe on the *completed* message id — recorded only
+after the handler succeeds, so an interrupted run is re-processed, not skipped — tolerant-reader zod
+validation, and nack→DLQ). First handler: `modules/identity/signed-in.handler` writes the sign-in audit. Health probes at
 `/health/{live,ready}`. Installed stack: `amqplib`, `ioredis`, `drizzle-orm`/`pg`, `@nestjs/config`, `zod`,
 `nestjs-pino`. New consumers = a `ValidatedHandler` subclass in a domain module (no wiring needed —
 DiscoveryService finds it).
