@@ -16,8 +16,9 @@ pino logging, a global Drizzle `DatabaseModule` (a typed *view* of `audit_events
 schema/migrations**), a Redis `IdempotencyService`, and the RabbitMQ layer — `RabbitConnection` (**amqplib
 directly**, not `@nestjs/microservices`, to interoperate with the outbox's topic-exchange + routing keys)
 plus `ConsumerService` (asserts a topic exchange + queue + DLX/DLQ, discovers handlers via
-`DiscoveryService`, dispatches by routing key with SET-NX dedupe, tolerant-reader zod validation, and
-nack→DLQ). First handler: `modules/identity/signed-in.handler` writes the sign-in audit. Health probes at
+`DiscoveryService`, dispatches by routing key with dedupe on the *completed* message id — recorded only
+after the handler succeeds, so an interrupted run is re-processed, not skipped — tolerant-reader zod
+validation, and nack→DLQ). First handler: `modules/auth/signed-in.handler` writes the sign-in audit. Health probes at
 `/health/{live,ready}`. Installed stack: `amqplib`, `ioredis`, `drizzle-orm`/`pg`, `@nestjs/config`, `zod`,
 `nestjs-pino`. New consumers = a `ValidatedHandler` subclass in a domain module (no wiring needed —
 DiscoveryService finds it).
@@ -122,14 +123,60 @@ this is the enforced summary, tailored to the consumer service. (Stack-adapted �
 - **Open/Closed** — extend via strategy/polymorphism (e.g. a provider registry), not long `if/else`.
 
 **Structure & layering**
-- **Feature-first** — `src/modules/<domain>/` mirrors the api's bounded contexts; a module owns its
-  `*.handler` · `*.schema` · service · repository. **Never** top-level `handlers/`·`services/` layer folders;
-  channel clients live in `common/providers`, injected.
+- **Feature-first, never layer-first** — `src/modules/<name>/` mirrors the api's module names; a module owns
+  its `*.handler` · `*.schema` · service · repository. **Never** top-level `handlers/`·`services/` folders;
+  channel clients live in `common/providers`, injected. The full layout and rules are in **Creating a
+  module** below; follow it whenever you add one.
+
 - **Thin handlers** — a handler only: parse → **validate (tolerant reader / zod)** → delegate → ack; on
   failure nack → retry → DLQ. **No business logic** inline.
 - **Services orchestrate**; **repositories** do only agreed read-model access (this service does **not** own
   the schema — `eventa-api` does).
 - **DTOs/schemas at the edge** — validate every message with its zod schema; never trust the wire shape.
+
+### Creating a module (follow this exactly — mirrors eventa-api)
+
+**1. Name it after the api module whose events it consumes**, so the two repos line up 1:1. Modules are
+**flat siblings** under `src/modules/` — never nested inside another module — and related ones share a
+**prefix**: `auth` (`identity.signed_in`), `auth-signup` (`identity.email_verification_requested`),
+`auth-password` (`identity.password_reset_requested`), `events` (the `events.*` family). When the api splits
+a context, split the matching consumer here too.
+
+**2. Lay it out like this** — `<name>.module.ts` plus one **descriptively named** handler per routing key
+(the routing key, not the module, is what a handler is about), each paired with its schema:
+
+```
+src/modules/<name>/
+├── <name>.module.ts          # wiring only; providers are plain
+├── <event>.handler.ts        # one per routing key — thin: validate → delegate → ack
+├── <event>.schema.ts         # the zod tolerant reader + the exported routing-key const
+├── <name>.repository.ts      # agreed read-model access only (the API owns the schema)
+└── <shared>.ts               # helpers shared by this module's handlers (e.g. broadcast-delivery)
+```
+Handlers are **not** registered with RabbitmqModule — `ConsumerService` discovers every provider that looks
+like a `MessageHandler` via `DiscoveryService` and binds its `routingKey`. Just list it in `providers`.
+
+**3. One module = one concern, but handlers that share state stay together.** The three `events.*` handlers
+share `EventRecipientsRepository` + `deliverToEach`, so they live in one `events/` module — splitting them
+would force one module to reach into another's repository. Extra descriptively-named files inside a module
+are fine; cross-module repository access is not.
+
+**4. Own your schema, tolerantly.** Each consumer declares its **own** zod schema — never import a type from
+the api. Unknown fields are stripped, not rejected; `version` lets producer and consumer evolve apart. A
+schema that rejects a valid api message dead-letters real traffic, so keep required fields to the ones you
+actually use.
+
+**5. Every handler is idempotent.** Record completion **after** the side effect (`markCompleted`), and for a
+fan-out use `recipientLedger(messageId)` so a redelivery or DLQ replay delivers only the un-sent tail. See
+`broadcast-delivery.ts` — claiming before the work, or deduping only at message level, silently drops the
+tail of an interrupted run.
+
+**6. Register it in `app.module.ts`** and write the module docstring: which routing keys it consumes and
+which api context it mirrors.
+
+**7. Ship it with tests (TDD).** `*.spec.ts` beside the handler (mock the ports); `test/*.e2e-spec.ts`
+publishes a real message through the docker stack and asserts the effect — that is what proves the binding,
+the DI graph and the dedupe actually work.
 
 **Domain & correctness**
 - **Idempotent handlers** — dedupe on event/message id; a redelivery produces no second effect.

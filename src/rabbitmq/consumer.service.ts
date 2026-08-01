@@ -22,9 +22,9 @@ function asString(value: unknown): string | undefined {
 
 /**
  * Consumes the worker queue and dispatches each message to the handler bound to
- * its routing key. At-least-once + idempotent (dedupe on message id); tolerant
- * reader (handler validates); failures are dead-lettered (nack → DLX/DLQ), never
- * hot-looped.
+ * its routing key. At-least-once + idempotent (dedupe on the *completed* message id,
+ * recorded only after the handler succeeds); tolerant reader (handler validates);
+ * failures are dead-lettered (nack → DLX/DLQ), never hot-looped.
  */
 @Injectable()
 export class ConsumerService implements OnApplicationBootstrap {
@@ -104,7 +104,6 @@ export class ConsumerService implements OnApplicationBootstrap {
       channel.ack(msg);
     } catch (err) {
       this.logger.error({ err, ...ctx }, 'Handler failed — dead-lettering');
-      if (ctx.messageId) await this.idempotency.forget(ctx.messageId);
       channel.nack(msg, false, false); // → DLX/DLQ, no requeue
     }
   }
@@ -118,12 +117,16 @@ export class ConsumerService implements OnApplicationBootstrap {
       this.logger.warn({ routingKey: ctx.routingKey }, 'No handler — dropping');
       return;
     }
-    if (ctx.messageId && !(await this.idempotency.firstSeen(ctx.messageId))) {
-      this.logger.debug({ ...ctx }, 'Duplicate message — skipping');
+    if (ctx.messageId && (await this.idempotency.isCompleted(ctx.messageId))) {
+      this.logger.debug({ ...ctx }, 'Already processed — skipping');
       return;
     }
     const raw: unknown = JSON.parse(msg.content.toString('utf8'));
     await handler.handle(raw, ctx);
+    // Record completion only AFTER the handler succeeds: an interrupted run (no
+    // catch) leaves the message un-acked and un-marked, so it is re-processed on
+    // redelivery instead of being skipped-and-acked (which would drop its work).
+    if (ctx.messageId) await this.idempotency.markCompleted(ctx.messageId);
     this.logger.log({ ...ctx }, 'Message handled');
   }
 }

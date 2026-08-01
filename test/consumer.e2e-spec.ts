@@ -14,7 +14,7 @@ import * as amqp from 'amqplib';
 import Redis from 'ioredis';
 import { Pool } from 'pg';
 import { AppModule } from '../src/app.module';
-import { IDENTITY_SIGNED_IN } from '../src/modules/identity/signed-in.schema';
+import { IDENTITY_SIGNED_IN } from '../src/modules/auth/signed-in.schema';
 
 type Connection = Awaited<ReturnType<typeof amqp.connect>>;
 type Channel = Awaited<ReturnType<Connection['createChannel']>>;
