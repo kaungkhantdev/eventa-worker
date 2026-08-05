@@ -3,8 +3,14 @@ import type { Locale } from '../../db/schema/events';
 /** Satang per baht — money crosses the bus as an integer and is formatted here. */
 const SATANG_PER_BAHT = 100;
 
+/**
+ * What the email says about one ticket. Note what is ABSENT: the QR token.
+ * It is a bearer credential that admits someone to a paid event and stays
+ * valid until check-in, so it does not belong in plain-text mail — which is
+ * logged, forwarded, and scanned. The email names the ticket and links to the
+ * authenticated page that renders the scannable code.
+ */
 export interface ConfirmationTicket {
-  qrToken: string;
   holderName: string | null;
   ticketLabel: string | null;
 }
@@ -23,7 +29,7 @@ export interface ConfirmationDetails {
   currency: string;
   paid: boolean;
   tickets: readonly ConfirmationTicket[];
-  /** Where the attendee opens the live ticket with its scannable QR. */
+  /** ABSOLUTE link to the page that renders the scannable codes. */
   ticketsUrl: string;
 }
 
@@ -40,7 +46,6 @@ interface Copy {
   free: string;
   ticketsHeading: (n: number) => string;
   ticketLine: (label: string, holder: string) => string;
-  showQr: string;
   openTickets: string;
   closing: string;
 }
@@ -60,8 +65,7 @@ const COPY: Record<Locale, Copy> = {
     ticketsHeading: (n: number) =>
       n === 1 ? 'Your ticket' : `Your ${n} tickets`,
     ticketLine: (label: string, holder: string) => `${label} — ${holder}`,
-    showQr: 'Show this at the door:',
-    openTickets: 'Open your tickets:',
+    openTickets: 'Open your tickets to show at the door:',
     closing: 'See you there.',
   },
   th: {
@@ -78,19 +82,42 @@ const COPY: Record<Locale, Copy> = {
     ticketsHeading: (n: number) =>
       n === 1 ? 'บัตรของคุณ' : `บัตรของคุณ ${n} ใบ`,
     ticketLine: (label: string, holder: string) => `${label} — ${holder}`,
-    showQr: 'แสดงรหัสนี้ที่หน้างาน:',
-    openTickets: 'เปิดดูบัตรของคุณ:',
+    openTickets: 'เปิดดูบัตรของคุณเพื่อแสดงที่หน้างาน:',
     closing: 'แล้วพบกัน',
   },
 };
 
-/** ฿1,880.00 — satang formatted once, at the edge. */
-export function formatMoney(satang: number, currency: string): string {
-  const amount = (satang / SATANG_PER_BAHT).toLocaleString('en-US', {
+/** BCP-47 tag per locale; `th-TH` also gives Thai numerals' grouping and era. */
+const BCP47: Record<Locale, string> = { en: 'en-GB', th: 'th-TH' };
+
+/** ฿1,880.00 — satang formatted once, at the edge, in the reader's language. */
+export function formatMoney(
+  satang: number,
+  currency: string,
+  locale: Locale,
+): string {
+  const amount = (satang / SATANG_PER_BAHT).toLocaleString(BCP47[locale], {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
   return currency === 'THB' ? `฿${amount}` : `${amount} ${currency}`;
+}
+
+/**
+ * The door time, in the EVENT's timezone and the READER's language. A Thai
+ * email with an English date is half-translated — and `th-TH` also renders the
+ * Buddhist era a Thai reader expects.
+ */
+export function formatWhen(
+  startAt: Date,
+  timezone: string,
+  locale: Locale,
+): string {
+  return startAt.toLocaleString(BCP47[locale], {
+    timeZone: timezone,
+    dateStyle: 'full',
+    timeStyle: 'short',
+  });
 }
 
 export function confirmationSubject(details: ConfirmationDetails): string {
@@ -134,7 +161,7 @@ function whereLine(details: ConfirmationDetails, t: Copy): string[] {
 
 function totalLine(details: ConfirmationDetails, t: Copy): string {
   return details.paid
-    ? `${t.total}: ${formatMoney(details.totalSatang, details.currency)}`
+    ? `${t.total}: ${formatMoney(details.totalSatang, details.currency, details.locale)}`
     : t.free;
 }
 
@@ -145,8 +172,5 @@ function ticketLines(
 ): string[] {
   const label = ticket.ticketLabel ?? details.eventName;
   const holder = ticket.holderName ?? details.buyerName;
-  return [
-    `  ${t.ticketLine(label, holder)}`,
-    `  ${t.showQr} ${ticket.qrToken}`,
-  ];
+  return [`  ${t.ticketLine(label, holder)}`];
 }

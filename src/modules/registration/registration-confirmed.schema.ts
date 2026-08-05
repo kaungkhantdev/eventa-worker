@@ -23,6 +23,9 @@ export const registrationConfirmedSchema = z
     vatSatang: z.number().optional(),
     currency: z.string().optional(),
     isOnline: z.boolean().optional(),
+    /** ABSOLUTE link built by the API from PUBLIC_WEB_URL; required — the
+     * worker has no web origin of its own to fall back on. */
+    ticketsUrl: z.string(),
     paid: z.boolean().optional(),
     occurredAt: z.string().optional(),
   })

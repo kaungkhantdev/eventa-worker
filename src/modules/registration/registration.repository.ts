@@ -10,6 +10,7 @@ import {
   type Locale,
 } from '../../db/schema';
 import { LIVE_TICKET_STATUSES } from '../../db/schema/tickets';
+import { ATTENDEE_PERSONA, PLATFORM_ORG_SLUG } from '../../db/schema/events';
 import { withTenant, type Tx } from '../../db/tenant';
 import type { ConfirmationTicket } from './confirmation-email';
 
@@ -88,24 +89,47 @@ export class RegistrationRepository {
           locale: events.locale,
         })
         .from(events)
-        .where(eq(events.id, eventId))
+        .where(
+          and(
+            eq(events.id, eventId),
+            eq(events.organizationId, organizationId),
+          ),
+        )
         .limit(1);
       if (!event) return null;
       return {
         event,
         orgLocale: await this.orgLocale(tx, organizationId),
-        userLocale: await this.userLocale(tx, buyerEmail),
-        tickets: await this.liveTickets(tx, orderId),
+        userLocale: await this.attendeeLocale(tx, buyerEmail),
+        tickets: await this.liveTickets(tx, organizationId, orderId),
       };
     });
   }
 
-  /** The buyer's own language, when a portal account exists for that email. */
-  private async userLocale(tx: Tx, email: string): Promise<Locale | null> {
+  /**
+   * The buyer's own language, when they have an attendee account.
+   *
+   * Attendee accounts do NOT live in the organizer's workspace — every
+   * `persona = 'attendee'` user belongs to the single platform organization, so
+   * that one person's tickets can span organizers. Scoping this lookup to the
+   * organizer's org (the transaction we are inside) would therefore find
+   * nothing, and dropping the persona filter would match the ORGANIZER's own
+   * staff row for the same address: an organizer who buys a ticket to their own
+   * event has two rows, and an unordered `limit 1` would pick either.
+   */
+  private async attendeeLocale(tx: Tx, email: string): Promise<Locale | null> {
     const [row] = await tx
       .select({ locale: users.locale })
       .from(users)
-      .where(and(eq(users.email, email), isNull(users.deletedAt)))
+      .innerJoin(organizations, eq(organizations.id, users.organizationId))
+      .where(
+        and(
+          eq(users.email, email),
+          eq(users.persona, ATTENDEE_PERSONA),
+          eq(organizations.slug, PLATFORM_ORG_SLUG),
+          isNull(users.deletedAt),
+        ),
+      )
       .limit(1);
     return row?.locale ?? null;
   }
@@ -122,11 +146,11 @@ export class RegistrationRepository {
   /** Only tickets that still admit someone — a voided one must not be printed. */
   private async liveTickets(
     tx: Tx,
+    organizationId: number,
     orderId: string,
   ): Promise<ConfirmationTicket[]> {
     return tx
       .select({
-        qrToken: tickets.qrToken,
         holderName: tickets.holderName,
         ticketLabel: tickets.ticketLabel,
       })
@@ -134,6 +158,7 @@ export class RegistrationRepository {
       .where(
         and(
           eq(tickets.orderId, orderId),
+          eq(tickets.organizationId, organizationId),
           inArray(tickets.status, [...LIVE_TICKET_STATUSES]),
           isNull(tickets.deletedAt),
         ),

@@ -11,6 +11,7 @@ import {
   type ConfirmationDetails,
   confirmationBody,
   confirmationSubject,
+  formatWhen,
 } from './confirmation-email';
 import {
   REGISTRATION_CONFIRMED,
@@ -31,11 +32,13 @@ const DEFAULT_CURRENCY = 'THB';
  *
  * Three things shape this handler:
  *
- * - **The tickets are read live.** The message deliberately carries no QR
- *   tokens — they are bearer credentials for admission, so they never sit on
- *   the bus or in a retry queue. If every ticket has since been voided, nothing
- *   is sent: an email promising a ticket that no longer admits anyone is worse
- *   than no email.
+ * - **The tickets are read live, and their tokens never leave the database.**
+ *   A QR token is a bearer credential that admits someone to a paid event, so
+ *   it is carried neither on the bus nor in the email body — mail is logged,
+ *   forwarded and scanned. The email names each ticket and links to the page
+ *   that renders the scannable code. If every ticket has since been voided,
+ *   nothing is sent: an email promising a ticket that no longer admits anyone
+ *   is worse than no email.
  * - **The organizer can switch it off** (`message_templates.active`), and an
  *   absent row means on, so a workspace that never opened its settings still
  *   sends confirmations. Note this is a workspace-level switch, not per-event —
@@ -127,19 +130,20 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
     payload: RegistrationConfirmedEvent,
     source: ConfirmationSource,
   ): ConfirmationDetails {
+    const locale = pickLocale(source);
     return {
-      locale: pickLocale(source),
+      locale,
       buyerName: payload.buyerName,
       reference: payload.reference,
       eventName: source.event.name,
-      whenText: formatWhen(source.event),
+      whenText: formatWhen(source.event.startAt, source.event.timezone, locale),
       whereText: formatWhere(source.event),
       isOnline: source.event.isOnline,
       totalSatang: payload.totalSatang,
       currency: payload.currency ?? DEFAULT_CURRENCY,
       paid: payload.paid ?? payload.totalSatang > 0,
       tickets: source.tickets,
-      ticketsUrl: `/my/orders/${payload.orderId}`,
+      ticketsUrl: payload.ticketsUrl,
     };
   }
 }
@@ -147,15 +151,6 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
 /** The person's own choice first, then the event's, then the workspace's. */
 function pickLocale(source: ConfirmationSource): Locale {
   return source.userLocale ?? source.event.locale ?? source.orgLocale;
-}
-
-/** In the EVENT's timezone — an attendee reads the local door time, not UTC. */
-function formatWhen(event: ConfirmationEvent): string {
-  return event.startAt.toLocaleString('en-GB', {
-    timeZone: event.timezone,
-    dateStyle: 'full',
-    timeStyle: 'short',
-  });
 }
 
 /**

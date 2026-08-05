@@ -2,11 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EmailMessage, EmailProvider } from './email.provider';
 
 /**
- * Dev email provider: records the message to the log instead of sending. The
- * recipient address (PII) and the body (which can carry a confirmation link/token)
- * are only logged at debug, so neither lands in info-level logs — important once a
- * broadcast fans out to hundreds of attendee addresses. Swap for a real SMTP/SES
- * provider in production.
+ * Dev email provider: records that a message was sent, instead of sending it.
+ *
+ * It deliberately does NOT log the body. Bodies carry single-use links, and
+ * since the registration confirmation they can carry standing credentials —
+ * "never log secrets/tokens" admits no debug-level exception, and LOG_LEVEL is
+ * `debug` in the shipped .env. The recipient address is PII and stays at debug.
+ * Swap for a real SMTP/SES provider in production.
  */
 @Injectable()
 export class LogEmailProvider extends EmailProvider {
@@ -14,7 +16,7 @@ export class LogEmailProvider extends EmailProvider {
 
   send(message: EmailMessage): Promise<void> {
     this.logger.log({ subject: message.subject }, 'Email sent (dev provider)');
-    this.logger.debug({ to: message.to, body: message.text }, 'Email body');
+    this.logger.debug({ to: message.to }, 'Email recipient');
     return Promise.resolve();
   }
 }

@@ -11,6 +11,14 @@ import {
 // MIRROR of eventa-api's `events`, `organizations` and `users` — only the read
 // columns the confirmation email needs. eventa-api OWNS the schema.
 export const localeEnum = pgEnum('locale', ['en', 'th']);
+export const userPersonaEnum = pgEnum('user_persona', ['admin', 'attendee']);
+
+/**
+ * Every attendee account lives in this one workspace, so a person's tickets can
+ * span organizers. Mirrors eventa-api's `common/tenancy/platform-org.ts`.
+ */
+export const PLATFORM_ORG_SLUG = 'eventa';
+export const ATTENDEE_PERSONA = 'attendee' as const;
 
 export type Locale = (typeof localeEnum.enumValues)[number];
 
@@ -44,7 +52,8 @@ export const organizations = pgTable('organizations', {
 export const users = pgTable('users', {
   id: uuid().primaryKey(),
   organizationId: bigint({ mode: 'number' }).notNull(),
-  email: text().notNull(),
+  email: text().notNull(), // citext in eventa-api; read as text here
+  persona: userPersonaEnum().notNull(),
   /** A registered attendee's own choice; null → the event's, then the org's. */
   locale: localeEnum(),
   deletedAt: timestamp({ withTimezone: true }),

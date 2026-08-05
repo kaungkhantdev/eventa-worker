@@ -30,6 +30,7 @@ function payload(o: Record<string, unknown> = {}) {
     currency: 'THB',
     isOnline: false,
     paid: true,
+    ticketsUrl: 'https://web.test/my/tickets/orders/o-1',
     occurredAt: '2026-08-01T00:00:00Z',
     ...o,
   };
@@ -51,8 +52,8 @@ function source(o: Partial<ConfirmationSource> = {}): ConfirmationSource {
     orgLocale: 'en',
     userLocale: null,
     tickets: [
-      { qrToken: 'QR-AAA', holderName: 'Anan', ticketLabel: 'General' },
-      { qrToken: 'QR-BBB', holderName: 'Malee', ticketLabel: 'General' },
+      { holderName: 'Anan', ticketLabel: 'General' },
+      { holderName: 'Malee', ticketLabel: 'General' },
     ],
     ...o,
   };
@@ -97,11 +98,12 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
     const [sent] = email.send.mock.calls[0];
     expect(sent.to).toBe('anan@example.test');
     expect(sent.subject).toContain('Bangkok Tech Week');
-    // QR tokens never travel on the bus — they must come from the database.
-    expect(sent.text).toContain('QR-AAA');
-    expect(sent.text).toContain('QR-BBB');
     expect(sent.text).toContain('ORD-7K2M9QX4');
     expect(sent.text).toContain('฿1,880.00');
+    // The link is absolute: a root-relative path is inert in a mail client.
+    expect(sent.text).toContain('https://web.test/my/tickets/orders/o-1');
+    // A QR token is a bearer credential and must never reach the body.
+    expect(sent.text).not.toMatch(/QR-|qrToken/);
   });
 
   it('records completion only AFTER the email is away', async () => {
@@ -141,12 +143,45 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
   });
 
   describe('language', () => {
-    it('uses the attendee’s own preference above everything', async () => {
+    it('uses the attendee’s own preference OVER the event’s and the workspace’s', async () => {
+      // All three set and in conflict — the only shape that pins the order.
+      // With only the event nulled, swapping user/event precedence still passes.
       repo.loadConfirmation.mockResolvedValue(
-        source({ userLocale: 'th', orgLocale: 'en' }),
+        source({
+          userLocale: 'th',
+          orgLocale: 'en',
+          event: { ...source().event, locale: 'en' },
+        }),
       );
-      const [sent] = [await handle()].map(() => email.send.mock.calls[0][0]);
-      expect(sent.text).toContain('สวัสดีคุณ Anan');
+      await handle();
+      expect(email.send.mock.calls[0][0].text).toContain('สวัสดีคุณ Anan');
+    });
+
+    it('uses the event’s language OVER the workspace’s', async () => {
+      repo.loadConfirmation.mockResolvedValue(
+        source({
+          userLocale: null,
+          orgLocale: 'en',
+          event: { ...source().event, locale: 'th' },
+        }),
+      );
+      await handle();
+      expect(email.send.mock.calls[0][0].text).toContain('สวัสดีคุณ Anan');
+    });
+
+    it('writes the date in the reader’s language, not only the labels', async () => {
+      repo.loadConfirmation.mockResolvedValue(source({ userLocale: 'th' }));
+      await handle();
+      const { text } = email.send.mock.calls[0][0];
+      // A Thai email with an English date is half-translated; th-TH also
+      // renders the Buddhist era (2569), which is what a Thai reader expects.
+      expect(text).toMatch(/2569/);
+      expect(text).not.toMatch(/September/);
+    });
+
+    it('writes an English date for an English reader', async () => {
+      await handle();
+      expect(email.send.mock.calls[0][0].text).toMatch(/September 2026/);
     });
 
     it('falls back to the EVENT’s language when the attendee has none', async () => {
@@ -190,6 +225,14 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
       );
       await handle();
       expect(email.send.mock.calls[0][0].text).toContain('Online');
+    });
+
+    it('names an unlabelled ticket rather than printing null', async () => {
+      repo.loadConfirmation.mockResolvedValue(
+        source({ tickets: [{ holderName: null, ticketLabel: null }] }),
+      );
+      await handle();
+      expect(email.send.mock.calls[0][0].text).not.toMatch(/null|undefined/);
     });
 
     it('calls a free registration free instead of printing ฿0.00', async () => {
