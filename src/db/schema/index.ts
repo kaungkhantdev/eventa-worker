@@ -2,3 +2,6 @@
 // schema + migrations — never add migrations here.
 export * from './audit';
 export * from './orders';
+export * from './events';
+export * from './tickets';
+export * from './messaging';

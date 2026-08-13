@@ -19,7 +19,10 @@ directly**, not `@nestjs/microservices`, to interoperate with the outbox's topic
 plus `ConsumerService` (asserts a topic exchange + queue + DLX/DLQ, discovers handlers via
 `DiscoveryService`, dispatches by routing key with dedupe on the *completed* message id — recorded only
 after the handler succeeds, so an interrupted run is re-processed, not skipped — tolerant-reader zod
-validation, and nack→DLQ). First handler: `modules/auth/signed-in.handler` writes the sign-in audit. Health probes at
+validation, and nack→DLQ). **Handlers today:** `auth/signed-in` (sign-in audit) · `auth-signup/email-verification` ·
+`auth-password/password-reset` · `auth-two-factor/two-factor-disabled` · `events/{event-published,event-cancelled,attendees-email}` ·
+`registration/registration-confirmed` (the ticket-bearing confirmation email, US-MSG-01 — the first
+bilingual EN/TH content, and the first handler to read RLS-scoped tables via `db/tenant.ts`). Health probes at
 `/health/{live,ready}`. Installed stack: `amqplib`, `ioredis`, `drizzle-orm`/`pg`, `@nestjs/config`, `zod`,
 `nestjs-pino`. New consumers = a `ValidatedHandler` subclass in a domain module (no wiring needed —
 DiscoveryService finds it).
