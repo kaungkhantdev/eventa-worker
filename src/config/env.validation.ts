@@ -1,26 +1,68 @@
 import { z } from 'zod';
 
 /** Environment schema — the app refuses to start on an invalid env. */
-export const envSchema = z.object({
-  NODE_ENV: z
-    .enum(['development', 'test', 'production'])
-    .default('development'),
-  PORT: z.coerce.number().int().positive().default(3100),
+export const envSchema = z
+  .object({
+    NODE_ENV: z
+      .enum(['development', 'test', 'production'])
+      .default('development'),
+    PORT: z.coerce.number().int().positive().default(3100),
 
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  RABBITMQ_URL: z.string().min(1, 'RABBITMQ_URL is required'),
-  REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+    RABBITMQ_URL: z.string().min(1, 'RABBITMQ_URL is required'),
+    REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
 
-  LOG_LEVEL: z
-    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
-    .default('info'),
+    LOG_LEVEL: z
+      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+      .default('info'),
 
-  RABBITMQ_EXCHANGE: z.string().default('eventa.events'),
-  RABBITMQ_QUEUE: z.string().default('eventa.worker'),
-  RABBITMQ_PREFETCH: z.coerce.number().int().positive().default(10),
+    RABBITMQ_EXCHANGE: z.string().default('eventa.events'),
+    RABBITMQ_QUEUE: z.string().default('eventa.worker'),
+    RABBITMQ_PREFETCH: z.coerce.number().int().positive().default(10),
 
-  IDEMPOTENCY_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
-});
+    IDEMPOTENCY_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
+
+    /**
+     * How outbound mail leaves — or does not.
+     *
+     * `log` records that a message was sent and drops it, which is what a dev box
+     * wants: no credentials, and no way to mail a real attendee by accident. It
+     * is refused in production below.
+     */
+    EMAIL_PROVIDER: z.enum(['log', 'smtp']).default('log'),
+    EMAIL_FROM: z.string().min(3).default('Eventa <no-reply@eventa.local>'),
+
+    SMTP_HOST: z.string().min(1).optional(),
+    /** Mailpit's default, so the shipped dev setup needs nothing further. */
+    SMTP_PORT: z.coerce.number().int().positive().default(1025),
+    /** Implicit TLS on connect (port 465). STARTTLS is negotiated regardless. */
+    SMTP_SECURE: z
+      .union([z.boolean(), z.string()])
+      .transform((v) => v === true || v === 'true')
+      .default(false),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASSWORD: z.string().optional(),
+  })
+  // A host that is not named cannot be connected to. Find out at boot rather
+  // than when somebody is waiting on a verification link.
+  .refine((env) => env.EMAIL_PROVIDER !== 'smtp' || !!env.SMTP_HOST, {
+    message: 'EMAIL_PROVIDER=smtp requires SMTP_HOST',
+    path: ['SMTP_HOST'],
+  })
+  /**
+   * The log provider in production is a silent outage: sign-up says "check your
+   * inbox", the outbox drains, the handler reports success, and nobody ever
+   * receives a link. A dropped env var must not default into it — the same
+   * reasoning as PAYMENT_PROVIDER=fake in eventa-api.
+   */
+  .refine(
+    (env) => env.NODE_ENV !== 'production' || env.EMAIL_PROVIDER === 'smtp',
+    {
+      message:
+        'EMAIL_PROVIDER=log cannot run in production — no confirmation email would ever be delivered.',
+      path: ['EMAIL_PROVIDER'],
+    },
+  );
 
 export type Env = z.infer<typeof envSchema>;
 
