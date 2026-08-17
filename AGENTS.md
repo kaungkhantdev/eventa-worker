@@ -31,11 +31,20 @@ The build plan is **not in this repo** — it lives in the sibling SDLC docs at 
 these before adding anything:
 - [`../eventa-docs/05-development/development-guide.md`](../eventa-docs/05-development/development-guide.md) — §2 (worker layout), §8 (async & messaging in code). **Primary reference.**
 - [`../eventa-docs/04-architecture/software-architecture.md`](../eventa-docs/04-architecture/software-architecture.md) — the SAD; §6.3/§7.2 cover the outbox → RabbitMQ → consumer flow and ADRs.
-- [`../eventa-docs/04-architecture/entities.md`](../eventa-docs/04-architecture/entities.md) — the data model; this service may write only **agreed read-model tables** (api owns the schema).
+- [`../eventa-docs/04-architecture/entities.md`](../eventa-docs/04-architecture/entities.md) — the data model; this service may write only **agreed read-model tables** (api owns the schema), plus the one documented exception below.
 - [`../eventa-docs/08-maintenance/devops-observability-sre.md`](../eventa-docs/08-maintenance/devops-observability-sre.md) — the SRE signals this service must emit (queue depth, outbox lag, handler success/failure).
 
 Polyrepo siblings: `../eventa-api` (owns the DB schema/migrations and **produces** the events this service
 consumes), `../eventa-web` (React front-end), `eventa-infra` (Terraform/Helm/Argo CD).
+
+**The one write exception: `orders` + `seat_holds`, by the order-expiry sweep** (`modules/order-expiry`,
+US-DISC-05). A checkout that is never paid leaves a `pending` order and a lapsed hold behind, and no event
+can announce the passage of time — so this is the one job here driven by a clock rather than a message,
+and the one place this service writes an eventa-api aggregate rather than a read model. It was a deliberate
+choice to keep the schedule out of the HTTP API; the cost is that `orders`/`seat_holds` in `db/schema` are
+now **write** mirrors, so a missing enum value fails a write instead of being silently absent from a read.
+When eventa-api changes either table's enum, change it here in the same breath. Do not widen this exception
+to a second table without agreeing it first — one clock-driven job is a decision, three is a second API.
 
 **Framework docs:** NestJS — https://docs.nestjs.com/ (consult it for microservices/transporters,
 module/provider/DI, and testing patterns rather than guessing).

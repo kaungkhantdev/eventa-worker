@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { EmailModule } from './common/email/email.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
@@ -9,6 +10,7 @@ import { buildLoggerOptions } from './config/logger.config';
 import { DatabaseModule } from './db/database.module';
 import { HealthModule } from './health/health.module';
 import { EventsModule } from './modules/events/events.module';
+import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
 import { RegistrationModule } from './modules/registration/registration.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthPasswordModule } from './modules/auth-password/auth-password.module';
@@ -24,6 +26,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
       useFactory: (config: ConfigService<Env, true>) =>
         buildLoggerOptions(config),
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     EmailModule,
     IdempotencyModule,
@@ -34,6 +37,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     AuthTwoFactorModule,
     EventsModule,
     RegistrationModule,
+    OrderExpiryModule,
     HealthModule,
   ],
 })

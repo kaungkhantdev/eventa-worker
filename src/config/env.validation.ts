@@ -23,6 +23,19 @@ export const envSchema = z
     IDEMPOTENCY_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
 
     /**
+     * Closing the orders nobody paid for (US-DISC-05).
+     *
+     * The cadence is a literal on the `@Cron` decorator (every minute); only
+     * the two values that govern correctness live here.
+     *
+     * The grace is the window a payment webhook still in flight needs to land
+     * after a hold lapses. Without it the sweep could tell somebody their seats
+     * are gone while their money is on its way.
+     */
+    ORDER_EXPIRY_GRACE_MS: z.coerce.number().int().positive().default(120_000),
+    ORDER_EXPIRY_BATCH: z.coerce.number().int().positive().default(200),
+
+    /**
      * How outbound mail leaves — or does not.
      *
      * `log` records that a message was sent and drops it, which is what a dev box
