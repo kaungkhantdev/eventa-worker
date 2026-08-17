@@ -55,6 +55,18 @@ export const envSchema = z
       .default(false),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
+
+    /**
+     * Who a NON-PRODUCTION worker may mail. Comma-separated; an entry starting
+     * with `@` permits a whole domain.
+     *
+     * Verifying that delivery actually works means pointing a dev box at a real
+     * SMTP provider, and the database is full of seeded addresses that look
+     * real. Empty blocks everything outside production — a forgotten variable
+     * should read as "no mail went out", not "mail went to everyone". Ignored
+     * in production, where the recipient is a real attendee.
+     */
+    EMAIL_ALLOWLIST: z.string().default(''),
   })
   // A host that is not named cannot be connected to. Find out at boot rather
   // than when somebody is waiting on a verification link.
