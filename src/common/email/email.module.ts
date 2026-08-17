@@ -7,6 +7,23 @@ import { GuardedEmailProvider } from './guarded-email.provider';
 import { LogEmailProvider } from './log-email.provider';
 import { SmtpEmailProvider } from './smtp-email.provider';
 
+/** Builds one transport from config. Anything satisfying the port qualifies. */
+type TransportFactory = (config: ConfigService<Env, true>) => EmailProvider;
+
+/**
+ * The transports this worker can be configured with, keyed by `EMAIL_PROVIDER`.
+ *
+ * A lookup table rather than a branch, so adding SES or a vendor API is one
+ * entry here plus one value on the zod enum — no existing line changes. The
+ * `Record` is keyed by the enum's own type, so the compiler REFUSES a new
+ * `EMAIL_PROVIDER` value that has no transport behind it: the extension point
+ * is enforced rather than merely documented.
+ */
+const TRANSPORTS: Record<Env['EMAIL_PROVIDER'], TransportFactory> = {
+  log: () => new LogEmailProvider(),
+  smtp: (config) => new SmtpEmailProvider(config),
+};
+
 /**
  * Provides the EmailProvider port app-wide: a transport chosen by
  * `EMAIL_PROVIDER`, wrapped in the non-production recipient guard.
@@ -27,10 +44,8 @@ import { SmtpEmailProvider } from './smtp-email.provider';
     {
       provide: EmailProvider,
       useFactory: (config: ConfigService<Env, true>) => {
-        const transport =
-          config.getOrThrow('EMAIL_PROVIDER', { infer: true }) === 'smtp'
-            ? new SmtpEmailProvider(config)
-            : new LogEmailProvider();
+        const chosen = config.getOrThrow('EMAIL_PROVIDER', { infer: true });
+        const transport = TRANSPORTS[chosen](config);
         return new GuardedEmailProvider(
           transport,
           parseAllowlist(config.get('EMAIL_ALLOWLIST', { infer: true })),
