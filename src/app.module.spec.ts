@@ -22,53 +22,55 @@ import { AppModule } from './app.module';
  * list is one more thing to forget to update alongside the module.
  */
 
-const MODULES_DIR = join(__dirname, 'modules')
+const MODULES_DIR = join(__dirname, 'modules');
 
 /** The module class each handler lives beside, e.g. `PaymentsModule`. */
 function modulesOwningAHandler(): { feature: string; moduleClass: string }[] {
-  const owners: { feature: string; moduleClass: string }[] = []
+  const owners: { feature: string; moduleClass: string }[] = [];
 
   for (const feature of readdirSync(MODULES_DIR, { withFileTypes: true })) {
-    if (!feature.isDirectory()) continue
-    const dir = join(MODULES_DIR, feature.name)
-    const files = readdirSync(dir)
+    if (!feature.isDirectory()) continue;
+    const dir = join(MODULES_DIR, feature.name);
+    const files = readdirSync(dir);
 
     const hasHandler = files.some(
       (f) => f.endsWith('.handler.ts') && !f.endsWith('.spec.ts'),
-    )
-    if (!hasHandler) continue
+    );
+    if (!hasHandler) continue;
 
-    const moduleFile = files.find((f) => f.endsWith('.module.ts'))
-    if (!moduleFile) continue
+    const moduleFile = files.find((f) => f.endsWith('.module.ts'));
+    if (!moduleFile) continue;
 
-    const source = readFileSync(join(dir, moduleFile), 'utf8')
-    const declared = /export class (\w+Module)/.exec(source)
-    if (declared) owners.push({ feature: feature.name, moduleClass: declared[1] })
+    const source = readFileSync(join(dir, moduleFile), 'utf8');
+    const declared = /export class (\w+Module)/.exec(source);
+    if (declared)
+      owners.push({ feature: feature.name, moduleClass: declared[1] });
   }
-  return owners
+  return owners;
 }
 
 /** AppModule's `imports`, by class name, read without booting anything. */
 function importedModuleNames(): string[] {
-  const imported = (Reflect.getMetadata('imports', AppModule) ?? []) as unknown[]
+  const imported = (Reflect.getMetadata('imports', AppModule) ??
+    []) as unknown[];
   return imported
     .map((m) => (typeof m === 'function' ? m.name : ''))
-    .filter(Boolean)
+    .filter(Boolean);
 }
 
 describe('AppModule wiring', () => {
-  const owners = modulesOwningAHandler()
+  const owners = modulesOwningAHandler();
 
   it('finds the feature modules that declare handlers', () => {
     // A guard on the guard: if the layout changes and this finds nothing, the
     // test below would pass vacuously and prove nothing.
-    expect(owners.length).toBeGreaterThan(0)
-  })
+    expect(owners.length).toBeGreaterThan(0);
+  });
 
   it.each(owners)(
     'imports $moduleClass, so $feature handlers get a queue binding',
     ({ moduleClass }) => {
-      expect(importedModuleNames()).toContain(moduleClass)
+      expect(importedModuleNames()).toContain(moduleClass);
     },
-  )
-})
+  );
+});
