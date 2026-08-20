@@ -8,6 +8,7 @@ import { DiscoveryService } from '@nestjs/core';
 import type { ConsumeMessage } from 'amqplib';
 import { IdempotencyService } from '../common/idempotency/idempotency.service';
 import type { Env } from '../config/env.validation';
+import { isRetryable } from './failure';
 import {
   isMessageHandler,
   type MessageContext,
@@ -18,6 +19,26 @@ import { type AmqpChannel, RabbitConnection } from './rabbit.connection';
 /** amqplib types message properties as `any`; coerce to a clean string|undefined. */
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/**
+ * How long to wait before each redelivery, and — by its length — how many
+ * attempts a message gets before it parks in the dead-letter queue.
+ *
+ * Roughly twelve minutes in total, which covers the failures that fix
+ * themselves (a restarting database, a greylisting mail server, a brief network
+ * partition) without holding a message so long that a human never looks at it.
+ * A failure that outlives the ladder wants a person, not another attempt.
+ */
+const RETRY_DELAYS_MS = [5_000, 30_000, 120_000, 600_000] as const;
+
+/** AMQP's nameless exchange: routes by queue name, so no binding is needed. */
+const DEFAULT_EXCHANGE = '';
+
+/** Which attempt this delivery is, from the header the last retry stamped. */
+function attemptOf(headers: Record<string, unknown>): number {
+  const attempt = Number(headers['x-attempt'] ?? 0);
+  return Number.isFinite(attempt) && attempt > 0 ? attempt : 0;
 }
 
 /**
@@ -81,6 +102,18 @@ export class ConsumerService implements OnApplicationBootstrap {
       durable: true,
       deadLetterExchange: dlx,
     });
+
+    // One holding pen per rung. A message published here sits for the queue's
+    // TTL with no consumer, expires, and is dead-lettered straight back to the
+    // work queue — which is how RabbitMQ does a delay without a scheduler.
+    for (const delayMs of RETRY_DELAYS_MS) {
+      await channel.assertQueue(this.retryQueue(delayMs), {
+        durable: true,
+        messageTtl: delayMs,
+        deadLetterExchange: DEFAULT_EXCHANGE,
+        deadLetterRoutingKey: this.queue,
+      });
+    }
     for (const routingKey of this.handlers.keys()) {
       await channel.bindQueue(this.queue, this.exchange, routingKey);
     }
@@ -94,8 +127,12 @@ export class ConsumerService implements OnApplicationBootstrap {
     msg: ConsumeMessage | null,
   ): Promise<void> {
     if (!msg) return;
+    const headers = (msg.properties.headers ?? {}) as Record<string, unknown>;
     const ctx: MessageContext = {
-      routingKey: msg.fields.routingKey,
+      // A retried message comes back off a delay queue, so its routing key is
+      // the work queue's rather than the event's. The original is carried in a
+      // header, or the handler could never be found again.
+      routingKey: asString(headers['x-routing-key']) ?? msg.fields.routingKey,
       messageId: asString(msg.properties.messageId),
       correlationId: asString(msg.properties.correlationId),
     };
@@ -103,9 +140,67 @@ export class ConsumerService implements OnApplicationBootstrap {
       await this.dispatch(msg, ctx);
       channel.ack(msg);
     } catch (err) {
-      this.logger.error({ err, ...ctx }, 'Handler failed — dead-lettering');
-      channel.nack(msg, false, false); // → DLX/DLQ, no requeue
+      this.settleFailure(channel, msg, ctx, headers, err);
     }
+  }
+
+  /**
+   * Try again later, or park it.
+   *
+   * Every failure used to be one nack straight to the dead-letter queue, which
+   * treated a thirty-second SMTP outage exactly like a payload that will never
+   * parse — and destroyed a signup's only verification email.
+   */
+  private settleFailure(
+    channel: AmqpChannel,
+    msg: ConsumeMessage,
+    ctx: MessageContext,
+    headers: Record<string, unknown>,
+    err: unknown,
+  ): void {
+    const attempt = attemptOf(headers) + 1;
+    const delayMs = RETRY_DELAYS_MS[attempt - 1];
+
+    if (delayMs === undefined || !isRetryable(err)) {
+      this.logger.error(
+        { err, ...ctx, attempt },
+        'Handler failed — parking in the dead-letter queue',
+      );
+      channel.nack(msg, false, false); // → DLX/DLQ, no requeue
+      return;
+    }
+
+    try {
+      channel.publish(DEFAULT_EXCHANGE, this.retryQueue(delayMs), msg.content, {
+        ...msg.properties,
+        headers: {
+          ...headers,
+          'x-attempt': attempt,
+          'x-routing-key': ctx.routingKey,
+        },
+      });
+    } catch (publishErr) {
+      // The delayed copy could not be made, so the original is all there is —
+      // park it rather than ack a message whose work has not been done.
+      this.logger.error(
+        { err: publishErr, ...ctx, attempt },
+        'Could not schedule a retry — parking instead',
+      );
+      channel.nack(msg, false, false);
+      return;
+    }
+
+    this.logger.warn(
+      { err, ...ctx, attempt, delayMs },
+      'Handler failed — retrying after a delay',
+    );
+    // Acked only now: the delayed copy exists, so the original is redundant.
+    channel.ack(msg);
+  }
+
+  /** `eventa.worker.retry.5000` — holds a message for its TTL, then returns it. */
+  private retryQueue(delayMs: number): string {
+    return `${this.queue}.retry.${delayMs}`;
   }
 
   private async dispatch(
