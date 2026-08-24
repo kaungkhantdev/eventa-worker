@@ -3,6 +3,7 @@ import type { DiscoveryService } from '@nestjs/core';
 import type { ConsumeMessage } from 'amqplib';
 import type { IdempotencyService } from '../common/idempotency/idempotency.service';
 import type { Env } from '../config/env.validation';
+import type { MetricsService } from '../metrics/metrics.service';
 import { ConsumerService } from './consumer.service';
 import type {
   MessageContext,
@@ -43,6 +44,20 @@ function message(
   } as unknown as ConsumeMessage;
 }
 
+/**
+ * Metrics are fire-and-forget instrumentation, so the double just absorbs the
+ * calls: what these tests assert is ack/nack/retry behaviour, and a stub that
+ * recorded would only restate the assertions already below.
+ */
+function metricsStub(): MetricsService {
+  return {
+    setConsumerAttached: jest.fn(),
+    recordHandled: jest.fn(),
+    recordHandlerDuration: jest.fn(),
+    recordEmail: jest.fn(),
+  } as unknown as MetricsService;
+}
+
 /** Build a consumer wired to a stub idempotency + a single seeded handler. */
 function buildConsumer(
   idempotency: Partial<IdempotencyService>,
@@ -53,6 +68,7 @@ function buildConsumer(
     config,
     idempotency as IdempotencyService,
     {} as unknown as DiscoveryService,
+    metricsStub(),
   );
   (
     service as unknown as { handlers: Map<string, MessageHandler> }

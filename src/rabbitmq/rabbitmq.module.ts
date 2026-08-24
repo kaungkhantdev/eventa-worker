@@ -11,6 +11,8 @@ import { RabbitConnection } from './rabbit.connection';
 @Module({
   imports: [DiscoveryModule],
   providers: [RabbitConnection, ConsumerService],
-  exports: [RabbitConnection],
+  // The consumer is exported so the health module can ask whether this worker
+  // is actually attached — the question a liveness probe has to answer.
+  exports: [RabbitConnection, ConsumerService],
 })
 export class RabbitmqModule {}

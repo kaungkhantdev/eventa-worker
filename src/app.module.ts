@@ -8,6 +8,7 @@ import { AppConfigModule } from './config/config.module';
 import type { Env } from './config/env.validation';
 import { buildLoggerOptions } from './config/logger.config';
 import { DatabaseModule } from './db/database.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
 import { EventsModule } from './modules/events/events.module';
 import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
@@ -40,6 +41,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     RegistrationModule,
     PaymentsModule,
     OrderExpiryModule,
+    MetricsModule,
     HealthModule,
   ],
 })

@@ -14,6 +14,7 @@ import {
   type MessageContext,
   type MessageHandler,
 } from './message-handler.interface';
+import { MetricsService } from '../metrics/metrics.service';
 import { type AmqpChannel, RabbitConnection } from './rabbit.connection';
 
 /** amqplib types message properties as `any`; coerce to a clean string|undefined. */
@@ -31,6 +32,9 @@ function asString(value: unknown): string | undefined {
  * A failure that outlives the ladder wants a person, not another attempt.
  */
 const RETRY_DELAYS_MS = [5_000, 30_000, 120_000, 600_000] as const;
+
+/** hrtime is nanoseconds; the histogram is in seconds, as Prometheus expects. */
+const NS_PER_SECOND = 1_000_000_000;
 
 /** AMQP's nameless exchange: routes by queue name, so no binding is needed. */
 const DEFAULT_EXCHANGE = '';
@@ -51,27 +55,60 @@ function attemptOf(headers: Record<string, unknown>): number {
 export class ConsumerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ConsumerService.name);
   private readonly handlers = new Map<string, MessageHandler>();
+  private consuming = false;
 
   constructor(
     private readonly rabbit: RabbitConnection,
     private readonly config: ConfigService<Env, true>,
     private readonly idempotency: IdempotencyService,
     private readonly discovery: DiscoveryService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     this.registerHandlers();
+    // `attach` is handed to the connection so it runs again on every reconnect:
+    // topology and the consumer both live on the CHANNEL, and a replacement
+    // channel carrying neither is a worker that is connected and still deaf.
     const channel = await this.rabbit.connect(
       this.config.get('RABBITMQ_URL', { infer: true }),
+      (replacement) => this.attach(replacement),
+      () => {
+        this.metrics.setConsumerAttached(false);
+      },
     );
+    await this.attach(channel);
+  }
+
+  /**
+   * Put this worker to work on a channel — the first one, or its replacement.
+   *
+   * Safe to run repeatedly: asserting exchanges and queues is idempotent, and
+   * the old consumer went wherever the old channel did.
+   */
+  private async attach(channel: AmqpChannel): Promise<void> {
     await this.setupTopology(channel);
     await channel.consume(
       this.queue,
       (msg) => void this.onMessage(channel, msg),
     );
+    this.consuming = true;
+    this.metrics.setConsumerAttached(true);
     this.logger.log(
       `Consuming "${this.queue}" — ${this.handlers.size} handler(s): ${[...this.handlers.keys()].join(', ')}`,
     );
+  }
+
+  /**
+   * Whether this worker has ever reached the point of consuming.
+   *
+   * Read by the liveness probe together with the connection's own state: a
+   * process that booted, attached, and later lost the channel is not "live" in
+   * any sense that matters — it is a container doing nothing that a supervisor
+   * should replace.
+   */
+  get isConsuming(): boolean {
+    return this.consuming;
   }
 
   private registerHandlers(): void {
@@ -136,11 +173,20 @@ export class ConsumerService implements OnApplicationBootstrap {
       messageId: asString(msg.properties.messageId),
       correlationId: asString(msg.properties.correlationId),
     };
+    const startedAt = process.hrtime.bigint();
     try {
       await this.dispatch(msg, ctx);
       channel.ack(msg);
+      this.metrics.recordHandled(ctx.routingKey, 'ok');
     } catch (err) {
       this.settleFailure(channel, msg, ctx, headers, err);
+    } finally {
+      // Timed whatever the outcome: a handler that fails slowly is its own
+      // problem, and excluding failures would hide exactly the slow ones.
+      this.metrics.recordHandlerDuration(
+        ctx.routingKey,
+        Number(process.hrtime.bigint() - startedAt) / NS_PER_SECOND,
+      );
     }
   }
 
@@ -167,6 +213,7 @@ export class ConsumerService implements OnApplicationBootstrap {
         'Handler failed — parking in the dead-letter queue',
       );
       channel.nack(msg, false, false); // → DLX/DLQ, no requeue
+      this.metrics.recordHandled(ctx.routingKey, 'parked');
       return;
     }
 
@@ -194,6 +241,7 @@ export class ConsumerService implements OnApplicationBootstrap {
       { err, ...ctx, attempt, delayMs },
       'Handler failed — retrying after a delay',
     );
+    this.metrics.recordHandled(ctx.routingKey, 'retried');
     // Acked only now: the delayed copy exists, so the original is redundant.
     channel.ack(msg);
   }

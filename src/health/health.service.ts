@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../db/drizzle.constants';
+import { ConsumerService } from '../rabbitmq/consumer.service';
 import { RabbitConnection } from '../rabbitmq/rabbit.connection';
+import { livenessOf, type LivenessResult } from './liveness';
 
 export type CheckStatus = 'up' | 'down';
 
@@ -15,7 +17,20 @@ export class HealthService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly rabbit: RabbitConnection,
+    private readonly consumer: ConsumerService,
   ) {}
+
+  /**
+   * Is this worker doing its job? Synchronous on purpose — liveness is asked
+   * often and must not depend on a database round trip to answer.
+   */
+  liveness(): LivenessResult {
+    return livenessOf({
+      everConsumed: this.consumer.isConsuming,
+      connected: this.rabbit.isConnected,
+      downForMs: this.rabbit.downForMs(),
+    });
+  }
 
   async readiness(): Promise<ReadinessResult> {
     const checks: Record<string, CheckStatus> = {};
