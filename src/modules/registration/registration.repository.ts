@@ -3,7 +3,6 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import {
   events,
-  messageTemplates,
   organizations,
   tickets,
   users,
@@ -44,30 +43,6 @@ export interface ConfirmationSource {
 @Injectable()
 export class RegistrationRepository {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
-
-  /**
-   * Whether the organizer has this automated message switched on. An ABSENT row
-   * means active: a workspace that has never opened its message settings must
-   * still send confirmations.
-   */
-  async isMessageActive(
-    organizationId: number,
-    slug: string,
-  ): Promise<boolean> {
-    return withTenant(this.db, organizationId, async (tx) => {
-      const [row] = await tx
-        .select({ active: messageTemplates.active })
-        .from(messageTemplates)
-        .where(
-          and(
-            eq(messageTemplates.organizationId, organizationId),
-            eq(messageTemplates.slug, slug),
-          ),
-        )
-        .limit(1);
-      return row?.active ?? true;
-    });
-  }
 
   async loadConfirmation(
     organizationId: number,

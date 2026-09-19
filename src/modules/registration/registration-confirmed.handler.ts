@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
+import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
 import { REGISTRATION_CONFIRMATION_SLUG } from '../../db/schema/messaging';
 import type { Locale } from '../../db/schema/events';
 import {
@@ -59,6 +60,7 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
   constructor(
     private readonly email: EmailProvider,
     private readonly repo: RegistrationRepository,
+    private readonly templates: MessageTemplatesRepository,
     private readonly idempotency: IdempotencyService,
   ) {
     super();
@@ -70,7 +72,7 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
   ): Promise<void> {
     if (await this.alreadySent(ctx)) return;
     if (
-      !(await this.repo.isMessageActive(
+      !(await this.templates.isActive(
         payload.organizationId,
         REGISTRATION_CONFIRMATION_SLUG,
       ))

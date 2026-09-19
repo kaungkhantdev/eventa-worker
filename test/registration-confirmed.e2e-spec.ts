@@ -7,6 +7,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Pool } from 'pg';
 import { AppConfigModule } from '../src/config/config.module';
 import { DatabaseModule } from '../src/db/database.module';
+import { MessageTemplatesRepository } from '../src/common/messaging/message-templates.repository';
 import { RegistrationRepository } from '../src/modules/registration/registration.repository';
 
 const RUN = Date.now();
@@ -23,6 +24,7 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
   let app: INestApplication;
   let pool: Pool;
   let repo: RegistrationRepository;
+  let templates: MessageTemplatesRepository;
   let orgId: number;
   let eventId: string;
   let orderId: string;
@@ -37,11 +39,12 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
     // needs only config + the database.
     const moduleRef = await Test.createTestingModule({
       imports: [AppConfigModule, DatabaseModule],
-      providers: [RegistrationRepository],
+      providers: [RegistrationRepository, MessageTemplatesRepository],
     }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
     repo = app.get(RegistrationRepository);
+    templates = app.get(MessageTemplatesRepository);
   }, 30000);
 
   afterAll(async () => {
@@ -50,12 +53,12 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
     await app.close();
   });
 
-  describe('isMessageActive', () => {
+  describe('the kill switch every automated message checks', () => {
     it('is ON for a workspace that has never opened its settings', async () => {
       // No row is seeded on workspace creation, so absent MUST mean active —
       // otherwise every new workspace silently stops confirming registrations.
       await expect(
-        repo.isMessageActive(orgId, 'registration-confirmation'),
+        templates.isActive(orgId, 'registration-confirmation'),
       ).resolves.toBe(true);
     });
 
@@ -66,7 +69,7 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
         [orgId],
       );
       await expect(
-        repo.isMessageActive(orgId, 'registration-confirmation'),
+        templates.isActive(orgId, 'registration-confirmation'),
       ).resolves.toBe(false);
       await pool.query(
         `UPDATE message_templates SET active = true WHERE organization_id = $1`,
@@ -86,7 +89,23 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
         [otherId],
       );
       await expect(
-        repo.isMessageActive(orgId, 'registration-confirmation'),
+        templates.isActive(orgId, 'registration-confirmation'),
+      ).resolves.toBe(true);
+    });
+
+    it('answers per message, not per workspace', async () => {
+      // Two handlers read this now. A where-clause that forgot the slug would
+      // let switching off the cancellation notice silence confirmations too.
+      await pool.query(
+        `INSERT INTO message_templates (organization_id, slug, title, active)
+         VALUES ($1, 'cancellation-notice', 'Cancellation notice', false)`,
+        [orgId],
+      );
+      await expect(
+        templates.isActive(orgId, 'cancellation-notice'),
+      ).resolves.toBe(false);
+      await expect(
+        templates.isActive(orgId, 'registration-confirmation'),
       ).resolves.toBe(true);
     });
   });

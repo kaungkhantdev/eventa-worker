@@ -1,5 +1,6 @@
 import type { EmailProvider } from '../../common/email/email.provider';
 import type { IdempotencyService } from '../../common/idempotency/idempotency.service';
+import type { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
 import type { MessageContext } from '../../rabbitmq/message-handler.interface';
 import type { ConfirmationSource } from './registration.repository';
 import type { RegistrationRepository } from './registration.repository';
@@ -62,20 +63,28 @@ function source(o: Partial<ConfirmationSource> = {}): ConfirmationSource {
 describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
   let email: jest.Mocked<EmailProvider>;
   let repo: jest.Mocked<RegistrationRepository>;
+  let templates: jest.Mocked<MessageTemplatesRepository>;
   let idempotency: jest.Mocked<IdempotencyService>;
   let handler: RegistrationConfirmedHandler;
 
   beforeEach(() => {
     email = { send: jest.fn().mockResolvedValue(undefined) };
     repo = {
-      isMessageActive: jest.fn().mockResolvedValue(true),
       loadConfirmation: jest.fn().mockResolvedValue(source()),
     } as unknown as jest.Mocked<RegistrationRepository>;
+    templates = {
+      isActive: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<MessageTemplatesRepository>;
     idempotency = {
       isCompleted: jest.fn().mockResolvedValue(false),
       markCompleted: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IdempotencyService>;
-    handler = new RegistrationConfirmedHandler(email, repo, idempotency);
+    handler = new RegistrationConfirmedHandler(
+      email,
+      repo,
+      templates,
+      idempotency,
+    );
   });
 
   const handle = (o: Record<string, unknown> = {}) =>
@@ -128,7 +137,7 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
 
   describe('the organizer’s kill switch', () => {
     it('sends nothing when the message is turned off', async () => {
-      repo.isMessageActive.mockResolvedValue(false);
+      templates.isActive.mockResolvedValue(false);
       await handle();
       expect(email.send).not.toHaveBeenCalled();
       expect(repo.loadConfirmation).not.toHaveBeenCalled();
@@ -136,7 +145,7 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
 
     it('still sends when the workspace has never touched its settings', async () => {
       // An absent row means active — a new workspace must not go silent.
-      repo.isMessageActive.mockResolvedValue(true);
+      templates.isActive.mockResolvedValue(true);
       await handle();
       expect(email.send).toHaveBeenCalled();
     });

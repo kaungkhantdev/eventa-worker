@@ -12,8 +12,14 @@ import {
 // schema and migrations; keep in sync with entities.md.
 export const messageChannelEnum = pgEnum('message_channel', ['email', 'sms']);
 
-/** The slug of the message this service sends on `registration.confirmed`. */
+/**
+ * Catalog slugs this service sends for. eventa-api owns the catalog and is the
+ * one that decides a message is switchable — a slug belongs here only once a
+ * handler both sends it AND checks `active`, or the switch in the UI would move
+ * and change nothing.
+ */
 export const REGISTRATION_CONFIRMATION_SLUG = 'registration-confirmation';
+export const CANCELLATION_NOTICE_SLUG = 'cancellation-notice';
 
 export const messageTemplates = pgTable('message_templates', {
   id: bigint({ mode: 'number' }).primaryKey(),
