@@ -4,6 +4,14 @@ import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import { messageTemplates } from '../../db/schema';
 import { withTenant } from '../../db/tenant';
 
+/** The organizer's own wording for one message, per language (US-MSG-02). */
+export interface TemplateWording {
+  subjectEn: string | null;
+  bodyEn: string | null;
+  subjectTh: string | null;
+  bodyTh: string | null;
+}
+
 /**
  * The organizer's kill switch for one automated message (US-MSG-01).
  *
@@ -39,6 +47,39 @@ export class MessageTemplatesRepository {
         )
         .limit(1);
       return row?.active ?? true;
+    });
+  }
+
+  /**
+   * What the organizer wrote, where they wrote any (US-MSG-02).
+   *
+   * Every field can be null independently: somebody may have rewritten the
+   * English and left the Thai to Eventa. The caller falls back per FIELD, not
+   * per template, so a half-filled row never sends a blank.
+   */
+  async wordingFor(
+    organizationId: number,
+    slug: string,
+  ): Promise<TemplateWording> {
+    return withTenant(this.db, organizationId, async (tx) => {
+      const [row] = await tx
+        .select({
+          subjectEn: messageTemplates.emailSubjectEn,
+          bodyEn: messageTemplates.emailBodyEn,
+          subjectTh: messageTemplates.emailSubjectTh,
+          bodyTh: messageTemplates.emailBodyTh,
+        })
+        .from(messageTemplates)
+        .where(
+          and(
+            eq(messageTemplates.organizationId, organizationId),
+            eq(messageTemplates.slug, slug),
+          ),
+        )
+        .limit(1);
+      return (
+        row ?? { subjectEn: null, bodyEn: null, subjectTh: null, bodyTh: null }
+      );
     });
   }
 }

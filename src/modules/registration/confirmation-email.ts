@@ -120,8 +120,11 @@ export function formatWhen(
   });
 }
 
-export function confirmationSubject(details: ConfirmationDetails): string {
-  return COPY[details.locale].subject(details.eventName);
+export function confirmationSubject(
+  details: ConfirmationDetails,
+  override?: string | null,
+): string {
+  return override || COPY[details.locale].subject(details.eventName);
 }
 
 /**
@@ -133,12 +136,20 @@ export function confirmationSubject(details: ConfirmationDetails): string {
  * unfilled" — an email reading "Where: null" is worse than one with no venue
  * line at all.
  */
-export function confirmationBody(details: ConfirmationDetails): string {
+export function confirmationBody(
+  details: ConfirmationDetails,
+  intro?: string | null,
+): string {
   const t = COPY[details.locale];
   return [
-    t.greeting(details.buyerName),
-    '',
-    t.confirmed(details.eventName),
+    // An organizer's wording replaces the OPENING only (US-MSG-02). Everything
+    // below — the reference, the ticket list, the link that renders the QR —
+    // is always Eventa's, because an attendee losing their ticket because
+    // somebody rewrote a greeting is not a wording choice anybody meant to
+    // make.
+    ...(intro
+      ? [intro]
+      : [t.greeting(details.buyerName), '', t.confirmed(details.eventName)]),
     '',
     `${t.reference}: ${details.reference}`,
     `${t.when}: ${details.whenText}`,

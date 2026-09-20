@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
+import { fill, pickWording } from '../../common/messaging/merge-fields';
 import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
 import { REGISTRATION_CONFIRMATION_SLUG } from '../../db/schema/messaging';
 import type { Locale } from '../../db/schema/events';
@@ -111,10 +112,31 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
     ctx: MessageContext,
   ): Promise<void> {
     const details = this.details(payload, source);
+    const chosen = pickWording(
+      await this.templates.wordingFor(
+        payload.organizationId,
+        REGISTRATION_CONFIRMATION_SLUG,
+      ),
+      details.locale,
+    );
+    const fields = {
+      first_name: details.buyerName,
+      event_name: details.eventName,
+    };
+
     await this.email.send({
       to: payload.buyerEmail,
-      subject: confirmationSubject(details),
-      text: confirmationBody(details),
+      subject: confirmationSubject(
+        details,
+        chosen.subject && fill(chosen.subject, fields),
+      ),
+      text: confirmationBody(details, chosen.body && fill(chosen.body, fields)),
+      delivery: {
+        organizationId: payload.organizationId,
+        kind: REGISTRATION_CONFIRMATION_SLUG,
+        recipientName: payload.buyerName,
+        eventId: payload.eventId,
+      },
     });
     if (ctx.messageId) await this.idempotency.markCompleted(ctx.messageId);
     this.logger.log(

@@ -1,8 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env.validation';
+import { MessageDeliveriesRepository } from '../messaging/message-deliveries.repository';
+import { MessagingModule } from '../messaging/messaging.module';
+import { SystemClock } from '../time/clock';
 import { EmailProvider } from './email.provider';
 import { LogEmailProvider } from './log-email.provider';
+import { RecordingEmailProvider } from './recording-email.provider';
 import { SmtpEmailProvider } from './smtp-email.provider';
 
 /** Builds one transport from config. Anything satisfying the port qualifies. */
@@ -33,18 +37,31 @@ const TRANSPORTS: Record<Env['EMAIL_PROVIDER'], TransportFactory> = {
  * is in its database. `EMAIL_PROVIDER=log` is the way to stop that — it records
  * the send and drops it, needs no credentials, and is the default.
  *
+ * Whatever transport is chosen, it is WRAPPED in RecordingEmailProvider so the
+ * delivery log (US-MSG-06) is written from one place. Binding it here rather
+ * than in nine handlers is the point: "remember to log it" is not a rule anyone
+ * can enforce, and the tenth handler would forget.
+ *
  * Handlers depend on the port alone, so none of this reaches them.
  */
 @Global()
 @Module({
+  imports: [MessagingModule],
   providers: [
     {
       provide: EmailProvider,
-      useFactory: (config: ConfigService<Env, true>) =>
-        TRANSPORTS[config.getOrThrow('EMAIL_PROVIDER', { infer: true })](
-          config,
+      useFactory: (
+        config: ConfigService<Env, true>,
+        deliveries: MessageDeliveriesRepository,
+      ) =>
+        new RecordingEmailProvider(
+          TRANSPORTS[config.getOrThrow('EMAIL_PROVIDER', { infer: true })](
+            config,
+          ),
+          deliveries,
+          new SystemClock(),
         ),
-      inject: [ConfigService],
+      inject: [ConfigService, MessageDeliveriesRepository],
     },
   ],
   exports: [EmailProvider],

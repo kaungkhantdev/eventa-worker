@@ -74,6 +74,13 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
     } as unknown as jest.Mocked<RegistrationRepository>;
     templates = {
       isActive: jest.fn().mockResolvedValue(true),
+      // No row stored: Eventa's own copy is what goes out.
+      wordingFor: jest.fn().mockResolvedValue({
+        subjectEn: null,
+        bodyEn: null,
+        subjectTh: null,
+        bodyTh: null,
+      }),
     } as unknown as jest.Mocked<MessageTemplatesRepository>;
     idempotency = {
       isCompleted: jest.fn().mockResolvedValue(false),

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
+import { fill, pickWording } from '../../common/messaging/merge-fields';
 import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
 import { CANCELLATION_NOTICE_SLUG } from '../../db/schema/messaging';
 import {
@@ -16,6 +17,24 @@ import {
 import { EventRecipientsRepository } from './event-recipients.repository';
 
 const SUBJECT_PREFIX = 'Cancelled: ';
+
+/**
+ * A cancellation goes to every confirmed attendee at once, and the payload
+ * carries no per-person language. English until the event's own locale reaches
+ * this event — which is a change to what eventa-api publishes, not to this.
+ */
+const DEFAULT_LOCALE = 'en' as const;
+
+function fieldsFor(
+  attendeeName: string,
+  payload: { name: string; reason: string },
+): Record<string, string> {
+  return {
+    first_name: attendeeName,
+    event_name: payload.name,
+    reason: payload.reason,
+  };
+}
 
 /**
  * Handles `events.cancelled` (US-EVT-08). Messages every confirmed attendee that
@@ -52,6 +71,15 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
     ctx: MessageContext,
   ): Promise<void> {
     if (await this.switchedOff(payload, ctx)) return;
+    // The organizer's own wording, where they wrote any (US-MSG-02). Read once
+    // for the batch rather than per recipient.
+    const wording = pickWording(
+      await this.templates.wordingFor(
+        payload.organizationId,
+        CANCELLATION_NOTICE_SLUG,
+      ),
+      DEFAULT_LOCALE,
+    );
     const recipients = await this.recipients.confirmedRecipients(
       payload.organizationId,
       payload.eventId,
@@ -64,8 +92,16 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
       recipients,
       (r) => ({
         to: r.email,
-        subject: `${SUBJECT_PREFIX}${payload.name}`,
-        text: this.body(r.name, payload.name, payload.reason),
+        subject: wording.subject
+          ? fill(wording.subject, fieldsFor(r.name, payload))
+          : `${SUBJECT_PREFIX}${payload.name}`,
+        text: this.body(r.name, payload.name, payload.reason, wording.body),
+        delivery: {
+          organizationId: payload.organizationId,
+          kind: CANCELLATION_NOTICE_SLUG,
+          recipientName: r.name,
+          eventId: payload.eventId,
+        },
       }),
       ledger,
     );
@@ -105,17 +141,33 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
     return true;
   }
 
+  /**
+   * An organizer's wording replaces the explanation, never the refund line.
+   *
+   * Somebody whose event was cancelled needs to know their money is coming
+   * back, and that is not a sentence to leave to whoever was editing a
+   * template at the time.
+   */
   private body(
     attendeeName: string,
     eventName: string,
     reason: string,
+    override?: string | null,
   ): string {
-    const lines = [
-      `Hi ${attendeeName},`,
-      '',
-      `We're sorry to let you know that "${eventName}" has been cancelled.`,
-    ];
-    if (reason) lines.push('', `Reason: ${reason}`);
+    const lines = override
+      ? [
+          fill(override, {
+            first_name: attendeeName,
+            event_name: eventName,
+            reason,
+          }),
+        ]
+      : [
+          `Hi ${attendeeName},`,
+          '',
+          `We're sorry to let you know that "${eventName}" has been cancelled.`,
+          ...(reason ? ['', `Reason: ${reason}`] : []),
+        ];
     lines.push(
       '',
       'If you purchased a ticket, our team will process your refund to the original payment method.',

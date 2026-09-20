@@ -10,6 +10,7 @@ import {
   type AttendeesEmailRequestedEvent,
   attendeesEmailRequestedSchema,
 } from './attendees-email.schema';
+import { ANNOUNCEMENT_KIND } from '../../db/schema/messaging';
 import { deliverToEach } from './broadcast-delivery';
 import { EventRecipientsRepository } from './event-recipients.repository';
 
@@ -52,6 +53,12 @@ export class AttendeesEmailHandler extends ValidatedHandler<AttendeesEmailReques
         to: r.email,
         subject: payload.subject,
         text: payload.message,
+        delivery: {
+          organizationId: payload.organizationId,
+          kind: ANNOUNCEMENT_KIND,
+          recipientName: r.name,
+          eventId: payload.eventId,
+        },
       }),
       ledger,
     );

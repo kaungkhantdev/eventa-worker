@@ -5,6 +5,7 @@ import {
   type MessageContext,
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
+import { REFUND_NOTICE_KIND } from '../../db/schema/messaging';
 import { PaymentsRepository, type RefundContext } from './payments.repository';
 import {
   type RefundNotice,
@@ -64,7 +65,11 @@ export class RefundRequiredHandler extends ValidatedHandler<RefundRequiredEvent>
     const context = await this.requireContext(payload);
     const notice = this.notice(payload, context);
     await this.alertOrganizer(context.organizerEmail, notice);
-    await this.reassureBuyer(payload.buyerEmail, notice);
+    await this.reassureBuyer(
+      payload.buyerEmail,
+      notice,
+      payload.organizationId,
+    );
     if (ctx.messageId) await this.idempotency.markCompleted(ctx.messageId);
     this.logger.warn(
       {
@@ -117,11 +122,21 @@ export class RefundRequiredHandler extends ValidatedHandler<RefundRequiredEvent>
     });
   }
 
-  private async reassureBuyer(to: string, notice: RefundNotice): Promise<void> {
+  /**
+   * The buyer's copy is logged; the organizer alert above is not. The delivery
+   * log is what a workspace sent its ATTENDEES — an internal action item
+   * addressed to the workspace itself does not belong in it.
+   */
+  private async reassureBuyer(
+    to: string,
+    notice: RefundNotice,
+    organizationId: number,
+  ): Promise<void> {
     await this.email.send({
       to,
       subject: buyerSubject(notice),
       text: buyerBody(notice),
+      delivery: { organizationId, kind: REFUND_NOTICE_KIND },
     });
   }
 }

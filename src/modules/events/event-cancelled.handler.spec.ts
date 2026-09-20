@@ -71,6 +71,13 @@ describe('EventCancelledHandler', () => {
     } as unknown as jest.Mocked<EventRecipientsRepository>;
     templates = {
       isActive: jest.fn().mockResolvedValue(true),
+      // No row stored: Eventa's own copy is what goes out.
+      wordingFor: jest.fn().mockResolvedValue({
+        subjectEn: null,
+        bodyEn: null,
+        subjectTh: null,
+        bodyTh: null,
+      }),
     } as unknown as jest.Mocked<MessageTemplatesRepository>;
     idempotency = stubIdempotency().idempotency;
     handler = new EventCancelledHandler(
@@ -130,6 +137,61 @@ describe('EventCancelledHandler', () => {
       await handler.handle(rawEvent, ctx);
 
       expect(recipients.confirmedRecipients).not.toHaveBeenCalled();
+    });
+  });
+
+  it('tags each message for the delivery log (US-MSG-06)', async () => {
+    // Without this the send happens and nothing can say afterwards that it
+    // did — the whole point of the log is the messages that are IN it.
+    recipients.confirmedRecipients.mockResolvedValue([
+      { email: 'anan@x.test', name: 'Anan' },
+    ] satisfies Recipient[]);
+
+    await handler.handle(rawEvent, ctx);
+
+    expect(sent[0].delivery).toEqual({
+      organizationId: 7,
+      kind: 'cancellation-notice',
+      recipientName: 'Anan',
+      eventId: 'e1',
+    });
+  });
+
+  describe('the organizer’s own wording (US-MSG-02)', () => {
+    beforeEach(() =>
+      recipients.confirmedRecipients.mockResolvedValue([
+        { email: 'anan@x.test', name: 'Anan' },
+      ] satisfies Recipient[]),
+    );
+
+    it('sends what the organizer wrote, with the fields filled', async () => {
+      templates.wordingFor.mockResolvedValue({
+        subjectEn: '{{event_name}} is off',
+        bodyEn: 'Sorry {{first_name}} — {{reason}}.',
+        subjectTh: null,
+        bodyTh: null,
+      });
+
+      await handler.handle(rawEvent, ctx);
+
+      expect(sent[0].subject).toBe('Bangkok Summit 2026 is off');
+      expect(sent[0].text).toContain('Sorry Anan — Venue flooded.');
+    });
+
+    it('keeps the refund line whatever the organizer wrote', async () => {
+      // Somebody whose event was cancelled needs to know their money is
+      // coming back. That is not a sentence to leave to whoever was editing a
+      // template at the time.
+      templates.wordingFor.mockResolvedValue({
+        subjectEn: null,
+        bodyEn: 'Cancelled.',
+        subjectTh: null,
+        bodyTh: null,
+      });
+
+      await handler.handle(rawEvent, ctx);
+
+      expect(sent[0].text).toContain('refund');
     });
   });
 
