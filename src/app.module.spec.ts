@@ -24,8 +24,18 @@ import { AppModule } from './app.module';
 
 const MODULES_DIR = join(__dirname, 'modules');
 
-/** The module class each handler lives beside, e.g. `PaymentsModule`. */
-function modulesOwningAHandler(): { feature: string; moduleClass: string }[] {
+const HANDLER = '.handler.ts';
+/**
+ * A cron job is discovered the same way — by `ScheduleModule` scanning the
+ * providers reachable from AppModule — and fails the same silent way: a sweep
+ * in a module nobody imports never ticks, and nothing errors.
+ */
+const CRON = '.cron.ts';
+
+/** The module class each handler (or cron) lives beside, e.g. `PaymentsModule`. */
+function modulesOwning(
+  suffix: string,
+): { feature: string; moduleClass: string }[] {
   const owners: { feature: string; moduleClass: string }[] = [];
 
   for (const feature of readdirSync(MODULES_DIR, { withFileTypes: true })) {
@@ -33,10 +43,10 @@ function modulesOwningAHandler(): { feature: string; moduleClass: string }[] {
     const dir = join(MODULES_DIR, feature.name);
     const files = readdirSync(dir);
 
-    const hasHandler = files.some(
-      (f) => f.endsWith('.handler.ts') && !f.endsWith('.spec.ts'),
+    const hasOne = files.some(
+      (f) => f.endsWith(suffix) && !f.endsWith('.spec.ts'),
     );
-    if (!hasHandler) continue;
+    if (!hasOne) continue;
 
     const moduleFile = files.find((f) => f.endsWith('.module.ts'));
     if (!moduleFile) continue;
@@ -59,7 +69,8 @@ function importedModuleNames(): string[] {
 }
 
 describe('AppModule wiring', () => {
-  const owners = modulesOwningAHandler();
+  const owners = modulesOwning(HANDLER);
+  const cronOwners = modulesOwning(CRON);
 
   it('finds the feature modules that declare handlers', () => {
     // A guard on the guard: if the layout changes and this finds nothing, the
@@ -69,6 +80,17 @@ describe('AppModule wiring', () => {
 
   it.each(owners)(
     'imports $moduleClass, so $feature handlers get a queue binding',
+    ({ moduleClass }) => {
+      expect(importedModuleNames()).toContain(moduleClass);
+    },
+  );
+
+  it('finds the feature modules that run a cron job', () => {
+    expect(cronOwners.length).toBeGreaterThan(0);
+  });
+
+  it.each(cronOwners)(
+    'imports $moduleClass, so $feature cron jobs tick',
     ({ moduleClass }) => {
       expect(importedModuleNames()).toContain(moduleClass);
     },

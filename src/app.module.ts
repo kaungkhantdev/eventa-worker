@@ -15,6 +15,7 @@ import { EventsModule } from './modules/events/events.module';
 import { ScheduledMessagesModule } from './modules/scheduled-messages/scheduled-messages.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
+import { ScheduledAnnouncementsModule } from './modules/scheduled-announcements/scheduled-announcements.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { RegistrationModule } from './modules/registration/registration.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -47,6 +48,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     RegistrationModule,
     PaymentsModule,
     OrderExpiryModule,
+    ScheduledAnnouncementsModule,
     MetricsModule,
     HealthModule,
   ],

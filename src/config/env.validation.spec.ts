@@ -80,4 +80,12 @@ describe('validateEnv', () => {
     expect(env.RABBITMQ_PREFETCH).toBe(10);
     expect(env.IDEMPOTENCY_TTL_SECONDS).toBe(86400);
   });
+
+  it('sends scheduled announcements fifty at a time unless told otherwise', () => {
+    expect(validateEnv(base).SCHEDULED_ANNOUNCEMENTS_BATCH).toBe(50);
+    expect(
+      validateEnv({ ...base, SCHEDULED_ANNOUNCEMENTS_BATCH: '10' })
+        .SCHEDULED_ANNOUNCEMENTS_BATCH,
+    ).toBe(10);
+  });
 });

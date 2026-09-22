@@ -8,3 +8,4 @@ export * from './events';
 export * from './tickets';
 export * from './messaging';
 export * from './outbox';
+export * from './announcements';

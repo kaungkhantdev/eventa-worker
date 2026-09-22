@@ -55,6 +55,18 @@ export const envSchema = z
     PUBLIC_WEB_URL: z.string().url().optional(),
 
     /**
+     * Scheduled announcements (US-MSG-04/05): how many due ones one sweep
+     * sends. The sweep runs every minute, so a backlog drains a batch a minute;
+     * the cap keeps one tick's transaction — and the row locks an organizer's
+     * cancel waits on — short.
+     */
+    SCHEDULED_ANNOUNCEMENTS_BATCH: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(50),
+
+    /**
      * The event reminder (US-MSG-01). Sent once an event is this close to
      * STARTING — a day, so it lands while there is still time to plan the trip.
      */
