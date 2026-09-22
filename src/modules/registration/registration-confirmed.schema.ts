@@ -18,6 +18,13 @@ export const registrationConfirmedSchema = z
     eventId: z.string(),
     buyerEmail: z.string(),
     buyerName: z.string(),
+    /**
+     * Whatever the buyer typed, UNNORMALISED (US-DISC-06 AC5). Nullish rather
+     * than required: most registrations carry no number, and producers older
+     * than the field omit it entirely. `toThaiMobileE164` decides whether
+     * there is a mobile here worth texting.
+     */
+    buyerPhone: z.string().nullish(),
     ticketCount: z.number(),
     totalSatang: z.number(),
     vatSatang: z.number().optional(),

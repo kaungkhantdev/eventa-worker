@@ -6,6 +6,8 @@ import {
 } from '../../common/idempotency/idempotency.service';
 import { fill, pickWording } from '../../common/messaging/merge-fields';
 import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
+import { SmsProvider } from '../../common/sms/sms.provider';
+import { toThaiMobileE164 } from '../../common/sms/thai-mobile';
 import { REGISTRATION_CONFIRMATION_SLUG } from '../../db/schema/messaging';
 import type { Locale } from '../../db/schema/events';
 import {
@@ -19,6 +21,7 @@ import {
   confirmationSubject,
   formatWhen,
 } from './confirmation-email';
+import { confirmationSms } from './confirmation-sms';
 import {
   REGISTRATION_CONFIRMED,
   type RegistrationConfirmedEvent,
@@ -32,9 +35,13 @@ import { RegistrationRepository } from './registration.repository';
 
 const DEFAULT_CURRENCY = 'THB';
 
-/** The two emails one confirmed order can owe, each recorded once it is done. */
+/**
+ * The three messages one confirmed order can owe, each recorded once it is
+ * done — two emails and, for an attendee who gave a mobile, a text.
+ */
 const CONFIRMATION_PART = 'confirmation';
 const RECEIPT_PART = 'receipt';
+const SMS_PART = 'sms';
 
 /**
  * Handles `registration.confirmed` (US-MSG-01): the email that carries the
@@ -62,10 +69,18 @@ const RECEIPT_PART = 'receipt';
  *   consumer allows one handler per routing key, so the receipt is sent from
  *   here rather than from a second handler that would silently replace this one.
  *
- * Each of the two emails is recorded as done once it is away, and the message
- * as a whole only after both. A crash between them is re-processed on
- * redelivery, and sends only what is still owed: the attendee gets the receipt
- * they missed, not a second copy of their tickets.
+ * - **An attendee who gave a Thai mobile also gets a TEXT** (US-DISC-06 AC5),
+ *   and it goes LAST. A text is a courtesy that repeats what the email already
+ *   carries, so no SMS provider outage may hold back somebody's ticket or
+ *   their receipt. It is sent only where all four of these hold: the
+ *   deployment has an SMS transport at all, the number normalises to a Thai
+ *   mobile, the organizer's confirmation is on AND lists the sms channel, and
+ *   there are still live tickets.
+ *
+ * Each of the three messages is recorded as done once it is away, and the
+ * message as a whole only after all of them. A crash between them is
+ * re-processed on redelivery, and sends only what is still owed: the attendee
+ * gets the receipt they missed, not a second copy of their tickets.
  */
 @Injectable()
 export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationConfirmedEvent> {
@@ -75,6 +90,7 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
 
   constructor(
     private readonly email: EmailProvider,
+    private readonly sms: SmsProvider,
     private readonly repo: RegistrationRepository,
     private readonly templates: MessageTemplatesRepository,
     private readonly idempotency: IdempotencyService,
@@ -95,6 +111,7 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
     if (isPaid(payload)) {
       await once(done, RECEIPT_PART, () => this.sendReceipt(payload, ctx));
     }
+    await once(done, SMS_PART, () => this.text(payload, ctx));
     if (ctx.messageId) await this.idempotency.markCompleted(ctx.messageId);
   }
 
@@ -177,6 +194,89 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
       },
       'Sent registration confirmation',
     );
+  }
+
+  /**
+   * The confirmation text (US-DISC-06 AC5), for an attendee who gave a Thai
+   * mobile and whose organizer has the sms channel on.
+   *
+   * Every branch out of here is a silent skip, not a failure: not having a
+   * mobile number is the NORMAL case, and a registration must never
+   * dead-letter because a courtesy text had no one to go to.
+   */
+  private async text(
+    payload: RegistrationConfirmedEvent,
+    ctx: MessageContext,
+  ): Promise<void> {
+    const to = await this.textRecipient(payload, ctx);
+    if (!to) return;
+
+    // Read again rather than reused from `confirm`: on a redelivery that part
+    // is already recorded as done and never runs, so this one has to stand on
+    // its own. The same read also re-checks that the tickets still exist.
+    const source = await this.repo.loadConfirmation(
+      payload.organizationId,
+      payload.orderId,
+      payload.eventId,
+      payload.buyerEmail,
+    );
+    if (!source || source.tickets.length === 0) return;
+
+    const locale = pickLocale(source);
+    await this.sms.send({
+      to,
+      text: confirmationSms({
+        locale,
+        eventName: source.event.name,
+        reference: payload.reference,
+        ticketsUrl: payload.ticketsUrl,
+      }),
+      delivery: {
+        organizationId: payload.organizationId,
+        kind: REGISTRATION_CONFIRMATION_SLUG,
+        recipientName: payload.buyerName,
+        // The log has no phone column; a text is filed under the person.
+        recipientEmail: payload.buyerEmail,
+        eventId: payload.eventId,
+      },
+    });
+    this.logger.log(
+      { correlationId: ctx.correlationId, orderId: payload.orderId, locale },
+      'Sent registration confirmation by SMS',
+    );
+  }
+
+  /**
+   * The number to text, or null with a reason logged — NEVER the number
+   * itself, which is PII the consumer would then publish to the log.
+   *
+   * Ordered cheapest first: a deployment with no SMS transport asks the
+   * database nothing.
+   */
+  private async textRecipient(
+    payload: RegistrationConfirmedEvent,
+    ctx: MessageContext,
+  ): Promise<string | null> {
+    const note = (message: string): null => {
+      this.logger.log(
+        { correlationId: ctx.correlationId, orderId: payload.orderId },
+        message,
+      );
+      return null;
+    };
+    if (!this.sms.enabled) return note('SMS is not configured — no text sent');
+
+    const to = toThaiMobileE164(payload.buyerPhone ?? '');
+    if (!to) return note('No Thai mobile on this order — no text sent');
+
+    const allowed = await this.templates.sendsOn(
+      payload.organizationId,
+      REGISTRATION_CONFIRMATION_SLUG,
+      'sms',
+    );
+    return allowed
+      ? to
+      : note('The confirmation’s SMS channel is off for this workspace');
   }
 
   private async sendReceipt(

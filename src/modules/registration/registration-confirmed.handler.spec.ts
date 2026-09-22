@@ -1,9 +1,11 @@
+import { Logger } from '@nestjs/common';
 import type { EmailProvider } from '../../common/email/email.provider';
 import type {
   IdempotencyService,
   SentLedger,
 } from '../../common/idempotency/idempotency.service';
 import type { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
+import type { SmsProvider } from '../../common/sms/sms.provider';
 import type { MessageContext } from '../../rabbitmq/message-handler.interface';
 import type { ReceiptSender } from '../payments/receipt-sender';
 import type { ConfirmationSource } from './registration.repository';
@@ -29,6 +31,7 @@ function payload(o: Record<string, unknown> = {}) {
     eventId: 'e-1',
     buyerEmail: 'anan@example.test',
     buyerName: 'Anan',
+    buyerPhone: '081-234-5678',
     ticketCount: 2,
     totalSatang: 1_880 * BAHT,
     vatSatang: 12_300,
@@ -66,6 +69,7 @@ function source(o: Partial<ConfirmationSource> = {}): ConfirmationSource {
 
 describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
   let email: jest.Mocked<EmailProvider>;
+  let sms: jest.Mocked<SmsProvider>;
   let repo: jest.Mocked<RegistrationRepository>;
   let templates: jest.Mocked<MessageTemplatesRepository>;
   let idempotency: jest.Mocked<IdempotencyService>;
@@ -83,11 +87,16 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
       },
     };
     email = { send: jest.fn().mockResolvedValue(undefined) };
+    sms = {
+      enabled: true,
+      send: jest.fn().mockResolvedValue(undefined),
+    };
     repo = {
       loadConfirmation: jest.fn().mockResolvedValue(source()),
     } as unknown as jest.Mocked<RegistrationRepository>;
     templates = {
       isActive: jest.fn().mockResolvedValue(true),
+      sendsOn: jest.fn().mockResolvedValue(true),
       // No row stored: Eventa's own copy is what goes out.
       wordingFor: jest.fn().mockResolvedValue({
         subjectEn: null,
@@ -106,12 +115,15 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
     } as unknown as jest.Mocked<ReceiptSender>;
     handler = new RegistrationConfirmedHandler(
       email,
+      sms,
       repo,
       templates,
       idempotency,
       receipts,
     );
   });
+
+  afterEach(() => jest.restoreAllMocks());
 
   const handle = (o: Record<string, unknown> = {}) =>
     handler.handle(payload(o), ctx);
@@ -163,9 +175,13 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
 
   describe('the organizer’s kill switch', () => {
     it('sends nothing when the message is turned off', async () => {
+      // Off is off on every channel: `sendsOn` reads the same `active` column
+      // that `isActive` does, so the text goes silent with the email.
       templates.isActive.mockResolvedValue(false);
+      templates.sendsOn.mockResolvedValue(false);
       await handle();
       expect(email.send).not.toHaveBeenCalled();
+      expect(sms.send).not.toHaveBeenCalled();
       expect(repo.loadConfirmation).not.toHaveBeenCalled();
     });
 
@@ -353,6 +369,134 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
       });
       await handle();
       expect(sequence).toEqual(['receipt', 'mark']);
+    });
+  });
+
+  describe('the confirmation text (US-DISC-06)', () => {
+    const sent = () => sms.send.mock.calls[0][0];
+
+    it('texts the mobile the buyer gave, in the shape a provider accepts', async () => {
+      await handle();
+      expect(sent().to).toBe('+66812345678');
+      expect(sent().text).toContain('ORD-7K2M9QX4');
+      expect(sent().text).toContain('https://web.test/my/tickets/orders/o-1');
+      expect(sent().text).toContain('Bangkok Tech Week');
+    });
+
+    it('files the text under the person, never under their number', async () => {
+      // `message_deliveries` has no phone column, and the number must not be
+      // smuggled into one of the text ones.
+      await handle();
+      expect(sent().delivery).toEqual({
+        organizationId: ORG,
+        kind: 'registration-confirmation',
+        recipientName: 'Anan',
+        recipientEmail: 'anan@example.test',
+        eventId: 'e-1',
+      });
+    });
+
+    it('writes the text in the reader’s language', async () => {
+      repo.loadConfirmation.mockResolvedValue(source({ userLocale: 'th' }));
+      await handle();
+      expect(sent().text).toContain('ลงทะเบียน');
+    });
+
+    it('sends nothing when no number was given', async () => {
+      // "Given I provided a mobile number" — most registrations do not.
+      await handle({ buyerPhone: null });
+      expect(sms.send).not.toHaveBeenCalled();
+      await handle({ buyerPhone: undefined });
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing to a landline or a foreign number', async () => {
+      // "and SMS is applicable". Neither can receive one, and both would be
+      // billed.
+      await handle({ buyerPhone: '021234567' });
+      await handle({ buyerPhone: '+14155550123' });
+      expect(sms.send).not.toHaveBeenCalled();
+      // The email is unaffected: a number that cannot be texted is not a
+      // reason to withhold somebody's ticket.
+      expect(email.send).toHaveBeenCalled();
+    });
+
+    it('honours the organizer’s SMS channel, and asks about the right one', async () => {
+      templates.sendsOn.mockResolvedValue(false);
+      await handle();
+      expect(templates.sendsOn).toHaveBeenCalledWith(
+        ORG,
+        'registration-confirmation',
+        'sms',
+      );
+      expect(sms.send).not.toHaveBeenCalled();
+      // One channel off is not the message off.
+      expect(email.send).toHaveBeenCalled();
+    });
+
+    it('does no work at all when the deployment cannot text', async () => {
+      // Production has no SMS account. Reading the database to build a text
+      // nothing can send is pure waste.
+      Object.defineProperty(sms, 'enabled', { value: false });
+      repo.loadConfirmation.mockClear();
+      await handle();
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(templates.sendsOn).not.toHaveBeenCalled();
+      // Once, for the email — not a second time for a text that cannot go.
+      expect(repo.loadConfirmation).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to text about an order whose tickets have all vanished', async () => {
+      repo.loadConfirmation.mockResolvedValue(source({ tickets: [] }));
+      await handle();
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    it('goes LAST, so a courtesy text never holds back a ticket', async () => {
+      const sequence: string[] = [];
+      email.send.mockImplementation(() => {
+        sequence.push('confirmation');
+        return Promise.resolve();
+      });
+      receipts.send.mockImplementation(() => {
+        sequence.push('receipt');
+        return Promise.resolve('sent');
+      });
+      sms.send.mockImplementation(() => {
+        sequence.push('sms');
+        return Promise.resolve();
+      });
+      idempotency.markCompleted.mockImplementation(() => {
+        sequence.push('mark');
+        return Promise.resolve();
+      });
+      await handle();
+      expect(sequence).toEqual(['confirmation', 'receipt', 'sms', 'mark']);
+    });
+
+    it('is retried on redelivery WITHOUT re-sending the email or the receipt', async () => {
+      sms.send.mockRejectedValueOnce(new Error('HTTP 503'));
+      await expect(handle()).rejects.toThrow('HTTP 503');
+      expect(idempotency.markCompleted).not.toHaveBeenCalled();
+
+      await handle();
+      expect(email.send).toHaveBeenCalledTimes(1);
+      expect(receipts.send).toHaveBeenCalledTimes(1);
+      expect(sms.send).toHaveBeenCalledTimes(2);
+      expect(idempotency.markCompleted).toHaveBeenCalledWith('msg-1');
+    });
+
+    it('never puts the number in a log line', async () => {
+      // The consumer logs whatever handlers log, and a phone number is PII.
+      const spies = (['log', 'warn', 'debug', 'error'] as const).map((level) =>
+        jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined),
+      );
+      await handle({ buyerPhone: '081-234-5678' });
+      await handle({ buyerPhone: '021234567' });
+
+      const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls));
+      expect(logged).not.toContain('812345678');
+      expect(logged).not.toContain('021234567');
     });
   });
 });

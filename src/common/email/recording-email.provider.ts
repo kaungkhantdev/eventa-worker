@@ -55,6 +55,7 @@ export class RecordingEmailProvider extends EmailProvider {
     try {
       await this.deliveries.record({
         organizationId: context.organizationId,
+        channel: 'email',
         kind: context.kind,
         recipientEmail: message.to,
         recipientName: context.recipientName ?? null,

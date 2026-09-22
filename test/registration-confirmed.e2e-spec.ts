@@ -7,6 +7,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Pool } from 'pg';
 import { AppConfigModule } from '../src/config/config.module';
 import { DatabaseModule } from '../src/db/database.module';
+import { MessageDeliveriesRepository } from '../src/common/messaging/message-deliveries.repository';
 import { MessageTemplatesRepository } from '../src/common/messaging/message-templates.repository';
 import { RegistrationRepository } from '../src/modules/registration/registration.repository';
 
@@ -25,6 +26,7 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
   let pool: Pool;
   let repo: RegistrationRepository;
   let templates: MessageTemplatesRepository;
+  let deliveries: MessageDeliveriesRepository;
   let orgId: number;
   let eventId: string;
   let orderId: string;
@@ -39,12 +41,17 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
     // needs only config + the database.
     const moduleRef = await Test.createTestingModule({
       imports: [AppConfigModule, DatabaseModule],
-      providers: [RegistrationRepository, MessageTemplatesRepository],
+      providers: [
+        RegistrationRepository,
+        MessageTemplatesRepository,
+        MessageDeliveriesRepository,
+      ],
     }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
     repo = app.get(RegistrationRepository);
     templates = app.get(MessageTemplatesRepository);
+    deliveries = app.get(MessageDeliveriesRepository);
   }, 30000);
 
   afterAll(async () => {
@@ -135,6 +142,109 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
       await expect(
         templates.isActive(orgId, 'registration-confirmation'),
       ).resolves.toBe(true);
+    });
+  });
+
+  /**
+   * The per-channel half of the same switch (US-DISC-06 AC5). `isActive` asks
+   * whether the message goes at all; this asks whether it goes BY TEXT, and the
+   * two disagree for every workspace that touched its settings before the
+   * confirmation gained an SMS channel — which is what migration 0066 in
+   * eventa-api exists to fix.
+   */
+  describe('the per-channel switch a text checks', () => {
+    const removeRows = () =>
+      pool.query(`DELETE FROM message_templates WHERE organization_id = $1`, [
+        orgId,
+      ]);
+
+    const storeRow = (
+      slug: string,
+      channels: string,
+      active = true,
+    ): Promise<unknown> =>
+      pool.query(
+        `INSERT INTO message_templates (organization_id, slug, title, active, channels)
+         VALUES ($1, $2, $2, $3, $4::message_channel[])`,
+        [orgId, slug, active, channels],
+      );
+
+    // Both ends: the block above leaves rows of its own behind, and no test
+    // here may depend on the order they ran in.
+    beforeEach(removeRows);
+    afterEach(removeRows);
+
+    it('texts a workspace that has never opened its settings', async () => {
+      // An absent row means the API catalog's channels, and the catalog now
+      // gives the confirmation email AND sms.
+      await expect(
+        templates.sendsOn(orgId, 'registration-confirmation', 'sms'),
+      ).resolves.toBe(true);
+    });
+
+    it('does NOT text a workspace whose stored row predates the SMS channel', async () => {
+      // '{email}' here is a copy of the OLD catalog, not a choice anybody made.
+      // Honouring it is still right: the row is what the organizer's page will
+      // show, and the backfill is what changes both together.
+      await storeRow('registration-confirmation', '{email}');
+      await expect(
+        templates.sendsOn(orgId, 'registration-confirmation', 'sms'),
+      ).resolves.toBe(false);
+      // The email is unaffected — one channel off is not the message off.
+      await expect(
+        templates.sendsOn(orgId, 'registration-confirmation', 'email'),
+      ).resolves.toBe(true);
+    });
+
+    it('texts once the row carries the sms channel', async () => {
+      await storeRow('registration-confirmation', '{email,sms}');
+      await expect(
+        templates.sendsOn(orgId, 'registration-confirmation', 'sms'),
+      ).resolves.toBe(true);
+    });
+
+    it('sends nothing at all when the message itself is switched off', async () => {
+      // The kill switch outranks the channel list: a message that is off is
+      // off on every channel it might have used.
+      await storeRow('registration-confirmation', '{email,sms}', false);
+      await expect(
+        templates.sendsOn(orgId, 'registration-confirmation', 'sms'),
+      ).resolves.toBe(false);
+    });
+
+    it('answers per message, not per workspace', async () => {
+      await storeRow('cancellation-notice', '{email}');
+      await expect(
+        templates.sendsOn(orgId, 'registration-confirmation', 'sms'),
+      ).resolves.toBe(true);
+    });
+  });
+
+  /**
+   * The enum write, through the mirror. The unit specs mock the repository, so
+   * without this a channel Drizzle cannot cast would surface as a failed insert
+   * inside a swallowed log write — a text that went out and was never recorded.
+   */
+  describe('the delivery log carries a text', () => {
+    it('records a send on the sms channel', async () => {
+      await deliveries.record({
+        organizationId: orgId,
+        channel: 'sms',
+        kind: 'registration-confirmation',
+        recipientEmail: BUYER,
+        recipientName: 'Buyer',
+        eventId,
+        status: 'sent',
+        error: null,
+        sentAt: new Date(),
+      });
+      const { rows } = await pool.query<{ channel: string }>(
+        `SELECT channel::text FROM message_deliveries
+          WHERE organization_id = $1 AND channel = 'sms'`,
+        [orgId],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].channel).toBe('sms');
     });
   });
 

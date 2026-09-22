@@ -13,6 +13,9 @@ import {
 // schema and migrations; keep in sync with entities.md.
 export const messageChannelEnum = pgEnum('message_channel', ['email', 'sms']);
 
+/** How one message left: the delivery log's channel, and the catalog's. */
+export type MessageChannel = (typeof messageChannelEnum.enumValues)[number];
+
 /**
  * Catalog slugs this service sends for. eventa-api owns the catalog and is the
  * one that decides a message is switchable — a slug belongs here only once a
@@ -71,6 +74,12 @@ export const messageTemplates = pgTable('message_templates', {
    * except for {@link OFF_UNTIL_SWITCHED_ON_SLUGS}.
    */
   active: boolean().notNull(),
+  /**
+   * Which channels this workspace's copy of the message goes out on. READ, not
+   * just mirrored: the confirmation is texted only when 'sms' is in here
+   * (US-DISC-06). An ABSENT row means the API catalog's own channels, which
+   * for the registration confirmation is email AND sms.
+   */
   channels: messageChannelEnum().array().notNull(),
   /**
    * The organizer's own wording (US-MSG-02). NULL means "use the built-in

@@ -29,6 +29,8 @@ const TRANSIENT_SQLSTATE_CLASSES = ['40', '08', '53'];
 interface ErrorFields {
   code?: unknown;
   responseCode?: unknown;
+  /** A transport's own verdict; see {@link isRetryable}. */
+  retryable?: unknown;
 }
 
 function fieldsOf(err: unknown): ErrorFields {
@@ -41,7 +43,14 @@ export function isRetryable(err: unknown): boolean {
   if (err instanceof ZodError) return false;
   if (err instanceof SyntaxError) return false;
 
-  const { code, responseCode } = fieldsOf(err);
+  const { code, responseCode, retryable } = fieldsOf(err);
+
+  // A transport that already classified its own failure is believed, and read
+  // FIRST. An SMS provider speaks HTTP, where 5xx is transient and 4xx is
+  // permanent — the exact reverse of SMTP below. Teaching this function both
+  // readings would mean guessing which protocol a status came from; saying so
+  // on the error removes the guess. See `SmsDeliveryError`.
+  if (typeof retryable === 'boolean') return retryable;
 
   if (typeof code === 'string' && PERMANENT_SMTP_CODES.has(code)) return false;
 

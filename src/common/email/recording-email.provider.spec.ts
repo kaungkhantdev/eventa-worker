@@ -40,11 +40,15 @@ describe('RecordingEmailProvider (US-MSG-06)', () => {
     expect(inner.send).toHaveBeenCalledWith(m);
   });
 
-  it('records what it sent, to whom', async () => {
+  it('records what it sent, to whom, and by which channel', async () => {
     await provider.send(message());
 
     expect(deliveries.record).toHaveBeenCalledWith({
       organizationId: 7,
+      // Named rather than left to the column default: the log now carries
+      // texts as well, and a row whose channel is whatever the database
+      // guessed is one an organizer cannot trust.
+      channel: 'email',
       kind: 'registration-confirmation',
       recipientEmail: 'anong@x.test',
       recipientName: 'Anong',

@@ -7,6 +7,14 @@ describe('validateEnv', () => {
     REDIS_URL: 'redis://localhost:6379',
   };
 
+  /** A production env whose EMAIL rules already pass, so SMS is what is tested. */
+  const production = {
+    ...base,
+    NODE_ENV: 'production',
+    EMAIL_PROVIDER: 'smtp',
+    SMTP_HOST: 'smtp.example.com',
+  };
+
   it('rejects an env missing RABBITMQ_URL', () => {
     expect(() =>
       validateEnv({
@@ -68,6 +76,67 @@ describe('validateEnv', () => {
           SMTP_HOST: 'smtp.example.com',
         }),
       ).not.toThrow();
+    });
+  });
+
+  /**
+   * The confirmation text (US-DISC-06). There is no SMS account for this
+   * product yet, so every one of these is OPTIONAL — a worker with no SMS
+   * config at all must still boot and send email.
+   */
+  describe('SMS delivery', () => {
+    it('boots with no SMS configuration whatsoever', () => {
+      expect(validateEnv(base).SMS_PROVIDER).toBeUndefined();
+    });
+
+    it('refuses twilio without the credentials to use it', () => {
+      // Find out at boot, not when somebody's confirmation text is owed.
+      expect(() => validateEnv({ ...base, SMS_PROVIDER: 'twilio' })).toThrow(
+        /TWILIO_ACCOUNT_SID/,
+      );
+      expect(() =>
+        validateEnv({
+          ...base,
+          SMS_PROVIDER: 'twilio',
+          TWILIO_ACCOUNT_SID: 'AC1',
+          TWILIO_AUTH_TOKEN: 'secret',
+        }),
+      ).toThrow(/TWILIO_FROM/);
+    });
+
+    it('accepts twilio once all three are given', () => {
+      const env = validateEnv({
+        ...base,
+        SMS_PROVIDER: 'twilio',
+        TWILIO_ACCOUNT_SID: 'AC1',
+        TWILIO_AUTH_TOKEN: 'secret',
+        TWILIO_FROM: 'Eventa',
+      });
+      expect(env.SMS_PROVIDER).toBe('twilio');
+    });
+
+    /**
+     * The log provider in production would fill the delivery log with texts
+     * that never left — US-MSG-06 is explicit that the log never claims a
+     * delivery the provider has not reported. `off` is the honest setting for
+     * a deployment with no SMS account.
+     */
+    it('refuses the log provider in production', () => {
+      expect(() => validateEnv({ ...production, SMS_PROVIDER: 'log' })).toThrow(
+        /SMS_PROVIDER/,
+      );
+    });
+
+    it('allows production to switch SMS off outright', () => {
+      expect(() =>
+        validateEnv({ ...production, SMS_PROVIDER: 'off' }),
+      ).not.toThrow();
+    });
+
+    it('lets production boot with SMS unconfigured', () => {
+      // There is no SMS account for this product yet. A worker that refused to
+      // start without one would take email down with it.
+      expect(() => validateEnv(production)).not.toThrow();
     });
   });
 

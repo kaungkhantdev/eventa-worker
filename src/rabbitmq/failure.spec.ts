@@ -37,6 +37,23 @@ describe('isRetryable', () => {
     it('refuses to retry an unusable recipient address', () => {
       expect(isRetryable(smtp({ code: 'EENVELOPE' }))).toBe(false);
     });
+
+    /**
+     * An SMS transport speaks HTTP, where 5xx is TRANSIENT — the opposite of
+     * SMTP. Rather than teach this function a second, contradictory reading of
+     * a status code, `SmsDeliveryError` states the answer outright.
+     */
+    it('takes a transport at its word when it says not to retry', () => {
+      expect(
+        isRetryable(Object.assign(new Error('HTTP 400'), { retryable: false })),
+      ).toBe(false);
+    });
+
+    it('still retries when a transport says it is worth it', () => {
+      expect(
+        isRetryable(Object.assign(new Error('HTTP 503'), { retryable: true })),
+      ).toBe(true);
+    });
   });
 
   /**

@@ -108,6 +108,29 @@ export const envSchema = z
       .default(false),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
+
+    /**
+     * How the confirmation TEXT leaves — or does not (US-DISC-06).
+     *
+     * OPTIONAL, unlike EMAIL_PROVIDER, because there is no SMS account for
+     * this product yet and a worker with none must still boot and send email.
+     * What "unset" means differs by environment and is decided once, in
+     * `resolveSmsTransport`: `log` on a dev box, `off` in production.
+     *
+     * `off` sends nothing and records nothing. `log` records a send and drops
+     * it — right for a dev box, and refused in production below.
+     */
+    SMS_PROVIDER: z.enum(['off', 'log', 'twilio']).optional(),
+
+    /** Required only for `SMS_PROVIDER=twilio`; never logged, never defaulted. */
+    TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
+    TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
+    /**
+     * The sender Thai carriers will show. Thailand generally requires a
+     * REGISTERED alphanumeric sender id; an unregistered long code may be
+     * rewritten or dropped by the carrier.
+     */
+    TWILIO_FROM: z.string().min(1).optional(),
   })
   // A host that is not named cannot be connected to. Find out at boot rather
   // than when somebody is waiting on a verification link.
@@ -127,6 +150,40 @@ export const envSchema = z
       message:
         'EMAIL_PROVIDER=log cannot run in production — no confirmation email would ever be delivered.',
       path: ['EMAIL_PROVIDER'],
+    },
+  )
+  // Credentials that are not all there cannot authenticate. As with SMTP_HOST,
+  // find out at boot rather than when somebody's confirmation text is owed.
+  .superRefine((env, ctx) => {
+    if (env.SMS_PROVIDER !== 'twilio') return;
+    for (const key of [
+      'TWILIO_ACCOUNT_SID',
+      'TWILIO_AUTH_TOKEN',
+      'TWILIO_FROM',
+    ] as const) {
+      if (!env[key])
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `SMS_PROVIDER=twilio requires ${key}`,
+          path: [key],
+        });
+    }
+  })
+  /**
+   * The log provider in production would fill the delivery log with texts that
+   * never left, and US-MSG-06 is explicit that the log never claims a delivery
+   * the provider has not reported.
+   *
+   * Unlike EMAIL_PROVIDER, an UNSET value is fine here: there is no SMS
+   * account yet, and it resolves to `off` in production — which texts nothing
+   * and, crucially, records nothing either.
+   */
+  .refine(
+    (env) => env.NODE_ENV !== 'production' || env.SMS_PROVIDER !== 'log',
+    {
+      message:
+        'SMS_PROVIDER=log cannot run in production — it would log texts as sent that were never sent. Use `off`, or configure a provider.',
+      path: ['SMS_PROVIDER'],
     },
   );
 

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import { messageTemplates } from '../../db/schema';
+import type { MessageChannel } from '../../db/schema/messaging';
 import { withTenant } from '../../db/tenant';
 import { activeWhenUnset } from './template-defaults';
 
@@ -49,6 +50,50 @@ export class MessageTemplatesRepository {
         )
         .limit(1);
       return row?.active ?? activeWhenUnset(slug);
+    });
+  }
+
+  /**
+   * Whether this message goes out ON THIS CHANNEL (US-DISC-06 AC5).
+   *
+   * Two conditions, because they answer different questions: `active` is the
+   * message's kill switch, and `channels` is which ways it leaves. A message
+   * that is off is off on every channel; a message that is on may still not be
+   * texted.
+   *
+   * An ABSENT row means the API CATALOG's channels for that slug — which is
+   * why this may only be asked about a channel the catalog actually gives the
+   * slug. Asking `sendsOn(org, 'event-reminder', 'sms')` would answer true for
+   * every workspace that never opened its settings and text people about a
+   * channel the catalog does not list.
+   *
+   * The stored row is a COPY of the catalog taken when the workspace first
+   * touched the message, so rows written before a slug gained a channel hold
+   * the old list. eventa-api's migration 0066 backfills those; without it a
+   * workspace that once reworded its confirmation would silently get no texts
+   * while its card showed an SMS badge.
+   */
+  async sendsOn(
+    organizationId: number,
+    slug: string,
+    channel: MessageChannel,
+  ): Promise<boolean> {
+    return withTenant(this.db, organizationId, async (tx) => {
+      const [row] = await tx
+        .select({
+          active: messageTemplates.active,
+          channels: messageTemplates.channels,
+        })
+        .from(messageTemplates)
+        .where(
+          and(
+            eq(messageTemplates.organizationId, organizationId),
+            eq(messageTemplates.slug, slug),
+          ),
+        )
+        .limit(1);
+      if (!row) return activeWhenUnset(slug);
+      return row.active && row.channels.includes(channel);
     });
   }
 
