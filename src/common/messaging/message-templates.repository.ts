@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import { messageTemplates } from '../../db/schema';
 import { withTenant } from '../../db/tenant';
+import { activeWhenUnset } from './template-defaults';
 
 /** The organizer's own wording for one message, per language (US-MSG-02). */
 export interface TemplateWording {
@@ -22,8 +23,8 @@ export interface TemplateWording {
  *
  * eventa-api owns the table and the catalog of slugs; this only reads. The read
  * runs inside `withTenant` so RLS scopes it — an unscoped read would return no
- * row, and no row means ACTIVE, so getting this wrong would send a message the
- * organizer had switched off.
+ * row, and no row means the slug's default (ACTIVE for all but the reminder),
+ * so getting this wrong would send a message the organizer had switched off.
  */
 @Injectable()
 export class MessageTemplatesRepository {
@@ -31,8 +32,9 @@ export class MessageTemplatesRepository {
 
   /**
    * Whether the organizer has this message switched on. An ABSENT row means
-   * active: a workspace that has never opened its message settings must still
-   * send its confirmations.
+   * the slug's default ({@link activeWhenUnset}): on, so a workspace that has
+   * never opened its message settings still sends its confirmations — except
+   * the event reminder, which waits until a workspace switches it on.
    */
   async isActive(organizationId: number, slug: string): Promise<boolean> {
     return withTenant(this.db, organizationId, async (tx) => {
@@ -46,7 +48,7 @@ export class MessageTemplatesRepository {
           ),
         )
         .limit(1);
-      return row?.active ?? true;
+      return row?.active ?? activeWhenUnset(slug);
     });
   }
 

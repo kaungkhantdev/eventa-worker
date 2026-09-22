@@ -12,6 +12,7 @@ const RUN = Date.now();
 const ORG_SLUG = `schmsg-${RUN}`;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
+const REMINDER = 'event-reminder';
 
 /**
  * Which events get a scheduled message, against the real schema
@@ -26,6 +27,8 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
   let pool: Pool;
   let repo: ScheduledMessagesRepository;
   let orgId: number;
+  /** A workspace that never switched the reminder on. */
+  let offOrgId: number;
   const now = new Date();
   const window = { now, delayMs: DAY, windowMs: 7 * DAY, limit: 50 };
 
@@ -37,6 +40,11 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
       [ORG_SLUG],
     );
     orgId = Number(org.rows[0].id);
+    const off = await pool.query<{ id: string }>(
+      `INSERT INTO organizations (name, slug, locale) VALUES ('Schmsg off', $1, 'en') RETURNING id`,
+      [`${ORG_SLUG}-off`],
+    );
+    offOrgId = Number(off.rows[0].id);
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppConfigModule, DatabaseModule],
@@ -48,13 +56,38 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
   }, 30000);
 
   afterEach(async () => {
-    await pool.query(
-      `DELETE FROM event_message_runs WHERE organization_id = $1`,
-      [orgId],
-    );
-    await pool.query(`DELETE FROM surveys WHERE organization_id = $1`, [orgId]);
-    await pool.query(`DELETE FROM events WHERE organization_id = $1`, [orgId]);
+    const orgs = [orgId, offOrgId];
+    for (const table of [
+      'event_message_runs',
+      'surveys',
+      'events',
+      'message_templates',
+    ]) {
+      await pool.query(`DELETE FROM ${table} WHERE organization_id = ANY($1)`, [
+        orgs,
+      ]);
+    }
   });
+
+  /** The organizer's reminder switch; null means they never touched it. */
+  async function switchReminder(
+    org: number,
+    active: boolean | null,
+  ): Promise<void> {
+    if (active === null) {
+      await pool.query(
+        `DELETE FROM message_templates WHERE organization_id = $1 AND slug = $2`,
+        [org, REMINDER],
+      );
+      return;
+    }
+    await pool.query(
+      `INSERT INTO message_templates (organization_id, slug, title, active)
+       VALUES ($1, $2, 'Event reminder', $3)
+       ON CONFLICT (organization_id, slug) DO UPDATE SET active = EXCLUDED.active`,
+      [org, REMINDER, active],
+    );
+  }
 
   afterAll(async () => {
     await cleanup(pool);
@@ -68,14 +101,20 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
     startsIn?: number;
     status?: string;
     survey?: 'live' | 'draft' | null;
+    /** Whose event; the main test workspace unless said otherwise. */
+    org?: number;
+    /** The instant `startsIn`/`endedAgo` count from; the test's `now` by default. */
+    base?: Date;
   }): Promise<string> {
     seq += 1;
+    const org = o.org ?? orgId;
+    const from = (o.base ?? now).getTime();
     // Either an event that already ENDED, or one that STARTS later; the other
     // end is two hours away from the given one.
     const ended =
       o.startsIn !== undefined
-        ? new Date(now.getTime() + o.startsIn + 2 * HOUR)
-        : new Date(now.getTime() - (o.endedAgo ?? 0));
+        ? new Date(from + o.startsIn + 2 * HOUR)
+        : new Date(from - (o.endedAgo ?? 0));
     const res = await pool.query<{ id: string }>(
       `INSERT INTO events (organization_id, slug, name, type, bucket, status, visibility,
                            start_at, end_at, timezone, organizer_name, published_at)
@@ -83,7 +122,7 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
                $5, $6, 'Asia/Bangkok', 'Schmsg', now())
        RETURNING id`,
       [
-        orgId,
+        org,
         `${ORG_SLUG}-${seq}`,
         `Event ${seq}`,
         o.status ?? 'completed',
@@ -96,7 +135,7 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
       await pool.query(
         `INSERT INTO surveys (organization_id, event_id, title, status)
          VALUES ($1, $2, 'Feedback', $3::survey_status)`,
-        [orgId, id, o.survey ?? 'live'],
+        [org, id, o.survey ?? 'live'],
       );
     }
     return id;
@@ -111,6 +150,10 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
     );
 
   describe('the reminder', () => {
+    // The reminder is off until a workspace switches it on, so every inclusion
+    // below is about a workspace that did.
+    beforeEach(() => switchReminder(orgId, true));
+
     it('picks an event starting within the day', async () => {
       const id = await event({ startsIn: 20 * HOUR, survey: null });
       expect(await remindIds()).toContain(id);
@@ -166,6 +209,36 @@ describe('ScheduledMessagesRepository (e2e — US-MSG-01/08)', () => {
         now,
       );
       expect(await remindIds()).not.toContain(id);
+    });
+
+    it('passes over a workspace that never switched the reminder on', async () => {
+      await switchReminder(orgId, null);
+      const id = await event({ startsIn: 20 * HOUR, survey: null });
+      expect(await remindIds()).not.toContain(id);
+    });
+
+    it('passes over a workspace that switched it off', async () => {
+      await switchReminder(orgId, false);
+      const id = await event({ startsIn: 20 * HOUR, survey: null });
+      expect(await remindIds()).not.toContain(id);
+    });
+
+    it('does not let workspaces that are off crowd out one that is on', async () => {
+      // An off workspace's events are never claimed or completed, so were they
+      // returned they would come back every sweep, sooner-starting first, and
+      // fill the batch ahead of workspaces that asked for reminders. Far in
+      // the future so nothing else in the database falls in the window.
+      const FAR = new Date('2091-03-01T00:00:00Z');
+      await event({
+        startsIn: 2 * HOUR,
+        survey: null,
+        org: offOrgId,
+        base: FAR,
+      });
+      const on = await event({ startsIn: 20 * HOUR, survey: null, base: FAR });
+
+      const due = await repo.remindersDue({ now: FAR, leadMs: DAY, limit: 1 });
+      expect(due.map((e) => e.eventId)).toEqual([on]);
     });
   });
 

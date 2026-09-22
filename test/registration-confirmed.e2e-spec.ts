@@ -62,6 +62,34 @@ describe('RegistrationRepository (e2e — US-MSG-01)', () => {
       ).resolves.toBe(true);
     });
 
+    it('keeps the event reminder OFF for a workspace that never switched it on', async () => {
+      // The one exception to "absent means on": a reminder is mail the
+      // workspace chooses to send, not one its attendees are owed.
+      await expect(templates.isActive(orgId, 'event-reminder')).resolves.toBe(
+        false,
+      );
+    });
+
+    it('sends the reminder once the organizer switches it on', async () => {
+      await pool.query(
+        `INSERT INTO message_templates (organization_id, slug, title, active)
+         VALUES ($1, 'event-reminder', 'Event reminder', true)`,
+        [orgId],
+      );
+      try {
+        await expect(templates.isActive(orgId, 'event-reminder')).resolves.toBe(
+          true,
+        );
+      } finally {
+        // Removed here rather than after the suite, so no other test's answer
+        // depends on the order they ran in.
+        await pool.query(
+          `DELETE FROM message_templates WHERE organization_id = $1 AND slug = 'event-reminder'`,
+          [orgId],
+        );
+      }
+    });
+
     it('is OFF once the organizer turns it off', async () => {
       await pool.query(
         `INSERT INTO message_templates (organization_id, slug, title, active)

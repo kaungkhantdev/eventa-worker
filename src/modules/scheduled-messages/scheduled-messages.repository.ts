@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
+import { activeWhenUnset } from '../../common/messaging/template-defaults';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import { eventMessageRuns } from '../../db/schema';
+import { EVENT_REMINDER_SLUG } from '../../db/schema/messaging';
 
 /** An event whose attendees are due a scheduled message. */
 export interface DueEvent {
@@ -49,12 +51,19 @@ export class ScheduledMessagesRepository {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /**
-   * Events that START within the next `leadMs`, were not cancelled, and have
-   * not been reminded.
+   * Events that START within the next `leadMs`, were not cancelled, have not
+   * been reminded, and belong to a workspace with the reminder switched on.
    *
    * Only ever forwards: an event that has begun is past being reminded about.
    * An event created at short notice is still reminded, just later — somebody
    * who registered this morning for tonight still wants the time and place.
+   *
+   * The organizer's switch is applied HERE as well as in `ScheduledSender`,
+   * because an off workspace's events are never claimed or completed: left in,
+   * they would come back every sweep, sooner-starting first, and fill the
+   * batch ahead of workspaces that asked for reminders. The reminder is off
+   * until switched on, so that is most workspaces. It is re-read every sweep,
+   * so switching it on inside the window still reaches people.
    */
   async remindersDue(input: {
     now: Date;
@@ -74,6 +83,12 @@ export class ScheduledMessagesRepository {
           SELECT 1 FROM event_message_runs r
           WHERE r.event_id = e.id AND r.kind = 'event-reminder'
             AND r.completed_at IS NOT NULL
+        )
+        AND coalesce(
+          (SELECT t.active FROM message_templates t
+           WHERE t.organization_id = e.organization_id
+             AND t.slug = ${EVENT_REMINDER_SLUG}),
+          ${activeWhenUnset(EVENT_REMINDER_SLUG)}::boolean
         )
       ORDER BY e.start_at
       LIMIT ${input.limit}

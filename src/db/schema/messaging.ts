@@ -45,11 +45,31 @@ export const POST_EVENT_THANKYOU_SLUG = 'post-event-thankyou';
 export const EVENT_REMINDER_SLUG = 'event-reminder';
 export const REFUND_NOTICE_KIND = 'refund-notice';
 
+/**
+ * Messages that are OFF in a workspace until its organizer switches them on —
+ * what an ABSENT `message_templates` row means for these slugs. Every other
+ * slug is on until switched off.
+ *
+ * MIRRORS the `defaultActive: false` entries of eventa-api's
+ * src/modules/message-templates/message-template-catalog.ts. The API decides
+ * what the organizer SEES and this decides what is SENT: if they disagree, the
+ * page says "Inactive" while attendees are mailed, or "Active" while nobody
+ * is. Change both together; each side's spec pins the list.
+ *
+ * Declared after the slug it lists, or module load would hit it uninitialised.
+ */
+export const OFF_UNTIL_SWITCHED_ON_SLUGS: readonly string[] = [
+  EVENT_REMINDER_SLUG,
+];
+
 export const messageTemplates = pgTable('message_templates', {
   id: bigint({ mode: 'number' }).primaryKey(),
   organizationId: bigint({ mode: 'number' }).notNull(),
   slug: text().notNull(),
-  /** The organizer's kill switch. An ABSENT row means active. */
+  /**
+   * The organizer's kill switch. An ABSENT row means the slug's default: on,
+   * except for {@link OFF_UNTIL_SWITCHED_ON_SLUGS}.
+   */
   active: boolean().notNull(),
   channels: messageChannelEnum().array().notNull(),
   /**
