@@ -18,6 +18,11 @@ const PRICE = 100_000;
  * The sweep is cross-tenant by design, so it may meet other lapsed orders in a
  * shared local database; a limit well above that keeps this suite's rows from
  * being left for a later sweep by chance.
+ *
+ * Being cross-tenant also means this suite cannot run beside another that
+ * sweeps — waitlist-queue does — or the two claim each other's seeded rows and
+ * each reports closures it never made. `test/jest-e2e.json` pins maxWorkers to
+ * 1 for that reason; the row filters below are not enough on their own.
  */
 const SWEEP_LIMIT = 1_000;
 
