@@ -36,6 +36,39 @@ export const envSchema = z
     ORDER_EXPIRY_BATCH: z.coerce.number().int().positive().default(200),
 
     /**
+     * Where the attendee-facing site lives, for links written into email —
+     * the survey link in the post-event thank-you (US-MSG-08).
+     *
+     * The same name eventa-api uses. OPTIONAL here: without it the thank-you
+     * job does not run and says why, rather than refusing to boot a worker
+     * whose other jobs do not need it. A root-relative link is not a fallback —
+     * it is inert in a mail client.
+     */
+    PUBLIC_WEB_URL: z.string().url().optional(),
+
+    /**
+     * The event reminder (US-MSG-01). Sent once an event is this close to
+     * STARTING — a day, so it lands while there is still time to plan the trip.
+     */
+    EVENT_REMINDER_LEAD_HOURS: z.coerce.number().int().positive().default(24),
+
+    /**
+     * The post-event thank-you (US-MSG-08). Sent this long after an event ENDS,
+     * so it lands the next day rather than while people are still leaving.
+     */
+    FEEDBACK_REQUEST_DELAY_HOURS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(24),
+    /**
+     * How far back the job looks. A guard, not a feature: without it the first
+     * run after deployment would thank everybody who ever attended anything.
+     */
+    FEEDBACK_REQUEST_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
+    FEEDBACK_REQUEST_BATCH: z.coerce.number().int().positive().default(20),
+
+    /**
      * How outbound mail leaves — or does not.
      *
      * `log` records that a message was sent and drops it, which is what a dev box

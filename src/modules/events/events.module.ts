@@ -19,5 +19,8 @@ import { EventRecipientsRepository } from './event-recipients.repository';
     AttendeesEmailHandler,
     EventCancelledHandler,
   ],
+  // The post-event thank-you writes to the same attendees, in the same
+  // languages, as a cancellation — so it reads them the same way.
+  exports: [EventRecipientsRepository],
 })
 export class EventsModule {}

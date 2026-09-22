@@ -29,6 +29,11 @@ export const CANCELLATION_NOTICE_SLUG = 'cancellation-notice';
  * automated message an organizer configures.
  */
 export const ANNOUNCEMENT_KIND = 'announcement';
+
+/** Sent the day after an event with a live survey (US-MSG-08). */
+export const POST_EVENT_THANKYOU_SLUG = 'post-event-thankyou';
+/** Sent a day before an event starts, to cut no-shows (US-MSG-01). */
+export const EVENT_REMINDER_SLUG = 'event-reminder';
 export const REFUND_NOTICE_KIND = 'refund-notice';
 
 export const messageTemplates = pgTable('message_templates', {
@@ -70,4 +75,30 @@ export const messageDeliveries = pgTable('message_deliveries', {
   status: deliveryStatusEnum().notNull(),
   error: text(),
   sentAt: timestamp({ withTimezone: true }).notNull(),
+});
+
+/**
+ * MIRROR of eventa-api's `surveys` — only what the thank-you job needs: whether
+ * an event has a LIVE survey to link to. eventa-api owns it.
+ */
+export const surveys = pgTable('surveys', {
+  id: bigint({ mode: 'number' }).primaryKey(),
+  organizationId: bigint({ mode: 'number' }).notNull(),
+  eventId: uuid().notNull(),
+  status: text().notNull(),
+});
+
+/**
+ * MIRROR of eventa-api's `event_message_runs` — bookkeeping for the messages
+ * this service sends on a schedule. This service WRITES it: the claim stops a
+ * second run emailing everybody twice, and `completedAt` lets a crashed run be
+ * resumed instead of treated as done.
+ */
+export const eventMessageRuns = pgTable('event_message_runs', {
+  id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  organizationId: bigint({ mode: 'number' }).notNull(),
+  eventId: uuid().notNull(),
+  kind: text().notNull(),
+  requestedAt: timestamp({ withTimezone: true }).notNull(),
+  completedAt: timestamp({ withTimezone: true }),
 });

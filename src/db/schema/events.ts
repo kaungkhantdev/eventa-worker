@@ -40,7 +40,17 @@ export const events = pgTable('events', {
   contactEmail: text(),
   /** The language this event's messages default to; null → the org's. */
   locale: localeEnum(),
+  /**
+   * Read as text: this service only ever asks whether an event was CANCELLED
+   * (nobody should be thanked for attending one), and mirroring the whole enum
+   * would be one more list to keep in step with eventa-api.
+   */
+  status: text().notNull(),
+  deletedAt: timestamp({ withTimezone: true }),
 });
+
+/** The one event status this service acts on. */
+export const CANCELLED_EVENT_STATUS = 'cancelled';
 
 export const organizations = pgTable('organizations', {
   id: bigint({ mode: 'number' }).primaryKey(),

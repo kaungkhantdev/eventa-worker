@@ -12,6 +12,7 @@ import { DatabaseModule } from './db/database.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
 import { EventsModule } from './modules/events/events.module';
+import { ScheduledMessagesModule } from './modules/scheduled-messages/scheduled-messages.module';
 import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { RegistrationModule } from './modules/registration/registration.module';
@@ -40,6 +41,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     AuthPasswordModule,
     AuthTwoFactorModule,
     EventsModule,
+    ScheduledMessagesModule,
     RegistrationModule,
     PaymentsModule,
     OrderExpiryModule,
