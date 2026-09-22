@@ -6,7 +6,11 @@ import {
 } from '../../common/idempotency/idempotency.service';
 import { fill, pickWording } from '../../common/messaging/merge-fields';
 import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
-import { SmsProvider } from '../../common/sms/sms.provider';
+import {
+  SmsDeliveryError,
+  SmsProvider,
+  type SmsMessage,
+} from '../../common/sms/sms.provider';
 import { toThaiMobileE164 } from '../../common/sms/thai-mobile';
 import { REGISTRATION_CONFIRMATION_SLUG } from '../../db/schema/messaging';
 import type { Locale } from '../../db/schema/events';
@@ -75,7 +79,8 @@ const SMS_PART = 'sms';
  *   their receipt. It is sent only where all four of these hold: the
  *   deployment has an SMS transport at all, the number normalises to a Thai
  *   mobile, the organizer's confirmation is on AND lists the sms channel, and
- *   there are still live tickets.
+ *   there are still live tickets. A refusal the transport calls FINAL is logged
+ *   and swallowed for that same reason — see `sendText`.
  *
  * Each of the three messages is recorded as done once it is away, and the
  * message as a whole only after all of them. A crash between them is
@@ -200,9 +205,9 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
    * The confirmation text (US-DISC-06 AC5), for an attendee who gave a Thai
    * mobile and whose organizer has the sms channel on.
    *
-   * Every branch out of here is a silent skip, not a failure: not having a
-   * mobile number is the NORMAL case, and a registration must never
-   * dead-letter because a courtesy text had no one to go to.
+   * No branch out of here dead-letters the message. Not having a mobile number
+   * is the NORMAL case, and a refusal the transport itself calls final is not
+   * worth parking a registration over either — see {@link sendText}.
    */
   private async text(
     payload: RegistrationConfirmedEvent,
@@ -223,27 +228,58 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
     if (!source || source.tickets.length === 0) return;
 
     const locale = pickLocale(source);
-    await this.sms.send({
-      to,
-      text: confirmationSms({
-        locale,
-        eventName: source.event.name,
-        reference: payload.reference,
-        ticketsUrl: payload.ticketsUrl,
-      }),
-      delivery: {
-        organizationId: payload.organizationId,
-        kind: REGISTRATION_CONFIRMATION_SLUG,
-        recipientName: payload.buyerName,
-        // The log has no phone column; a text is filed under the person.
-        recipientEmail: payload.buyerEmail,
-        eventId: payload.eventId,
-      },
-    });
+    const away = await this.sendText(
+      textMessage(to, locale, payload, source),
+      payload.orderId,
+      ctx,
+    );
+    if (!away) return;
     this.logger.log(
       { correlationId: ctx.correlationId, orderId: payload.orderId, locale },
       'Sent registration confirmation by SMS',
     );
+  }
+
+  /**
+   * Send the text, and decide what a failure to send it MEANS.
+   *
+   * A refusal the transport calls final — a rejected credential, a region the
+   * account may not text, a number the provider will not route — is swallowed,
+   * and the part is recorded as done. Retrying it would fail identically, and
+   * the cost of not swallowing it is severe: by the time the text goes the
+   * attendee already has their tickets and their VAT receipt, so nacking would
+   * park a message whose expensive halves are delivered, and a DLQ replay more
+   * than `IDEMPOTENCY_TTL_SECONDS` later finds an expired ledger and sends a
+   * second copy of both. Account-level refusals (a rotated Twilio token
+   * answering 401 to everything) would do that to every confirmation at once.
+   *
+   * Nothing is hidden by swallowing it: `RecordingSmsProvider` has already
+   * written the `failed` delivery row the organizer reads in US-MSG-06.
+   *
+   * A retryable failure — a provider outage, a timeout — is rethrown and rides
+   * the retry ladder, as does anything that is not an `SmsDeliveryError` at
+   * all, since only the transport can tell the two apart.
+   *
+   * @returns whether the text actually went out.
+   */
+  private async sendText(
+    message: SmsMessage,
+    orderId: string,
+    ctx: MessageContext,
+  ): Promise<boolean> {
+    try {
+      await this.sms.send(message);
+      return true;
+    } catch (cause) {
+      if (!isFinalRefusal(cause)) throw cause;
+      // `SmsDeliveryError` guarantees its message quotes neither the number
+      // nor the body — only the status and the provider's own code.
+      this.logger.warn(
+        { correlationId: ctx.correlationId, orderId, reason: cause.message },
+        'The SMS provider refused the confirmation text for good — not retried',
+      );
+      return false;
+    }
   }
 
   /**
@@ -323,6 +359,45 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
  */
 function isPaid(payload: RegistrationConfirmedEvent): boolean {
   return payload.paid ?? payload.totalSatang > 0;
+}
+
+/**
+ * The text itself, and the person the delivery log files it under.
+ *
+ * `delivery` carries no phone column on purpose: `message_deliveries` has none,
+ * and a text is filed under the same person as their email.
+ */
+function textMessage(
+  to: string,
+  locale: Locale,
+  payload: RegistrationConfirmedEvent,
+  source: ConfirmationSource,
+): SmsMessage {
+  return {
+    to,
+    text: confirmationSms({
+      locale,
+      eventName: source.event.name,
+      reference: payload.reference,
+      ticketsUrl: payload.ticketsUrl,
+    }),
+    delivery: {
+      organizationId: payload.organizationId,
+      kind: REGISTRATION_CONFIRMATION_SLUG,
+      recipientName: payload.buyerName,
+      recipientEmail: payload.buyerEmail,
+      eventId: payload.eventId,
+    },
+  };
+}
+
+/**
+ * A send that will fail the same way however often it is attempted. Only the
+ * transport can say so, which is why `SmsDeliveryError` carries the verdict on
+ * a field of its own rather than leaving it to be guessed from a status code.
+ */
+function isFinalRefusal(cause: unknown): cause is SmsDeliveryError {
+  return cause instanceof SmsDeliveryError && !cause.retryable;
 }
 
 /** Run `work` unless this message already did it; record it once it has. */

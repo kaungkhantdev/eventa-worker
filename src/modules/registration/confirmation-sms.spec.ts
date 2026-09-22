@@ -56,6 +56,30 @@ describe('confirmationSms (US-DISC-06)', () => {
     expect(confirmationSms(details({ eventName: name }))).not.toContain('...');
   });
 
+  /**
+   * A UTF-16 slice cuts a surrogate pair in half, and the orphaned half does
+   * not survive the trip: `URLSearchParams` — what the Twilio transport builds
+   * its request body with — serialises a lone surrogate as U+FFFD, so the
+   * attendee reads a replacement character where the organizer wrote an emoji.
+   */
+  it('clips by character, never through an emoji', () => {
+    const name = `${'A'.repeat(39)}🎉${'B'.repeat(10)}`;
+    const text = confirmationSms(details({ eventName: name }));
+    expect(new URLSearchParams({ Body: text }).toString()).not.toContain(
+      '%EF%BF%BD',
+    );
+    expect(text).toContain(`${'A'.repeat(39)}🎉...`);
+  });
+
+  it('counts an emoji as ONE character when deciding to clip', () => {
+    // 40 characters but 41 code units: measuring the string's `length` would
+    // clip a name that fits.
+    const name = `${'B'.repeat(39)}🎉`;
+    const text = confirmationSms(details({ eventName: name }));
+    expect(text).toContain(name);
+    expect(text).not.toContain('...');
+  });
+
   it('never reaches an attendee with an unfilled field', () => {
     for (const locale of ['en', 'th'] as const) {
       expect(confirmationSms(details({ locale }))).not.toMatch(

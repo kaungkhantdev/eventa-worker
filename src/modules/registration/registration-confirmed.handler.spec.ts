@@ -5,7 +5,10 @@ import type {
   SentLedger,
 } from '../../common/idempotency/idempotency.service';
 import type { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
-import type { SmsProvider } from '../../common/sms/sms.provider';
+import {
+  SmsDeliveryError,
+  type SmsProvider,
+} from '../../common/sms/sms.provider';
 import type { MessageContext } from '../../rabbitmq/message-handler.interface';
 import type { ReceiptSender } from '../payments/receipt-sender';
 import type { ConfirmationSource } from './registration.repository';
@@ -402,19 +405,25 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
       expect(sent().text).toContain('ลงทะเบียน');
     });
 
-    it('sends nothing when no number was given', async () => {
+    // One payload per case, deliberately: the parts a `handle()` completes are
+    // recorded in a ledger that lives for the whole `it`, so a second call in
+    // the same test short-circuits every part and asserts nothing.
+    it.each([
+      ['absent', null],
+      ['undefined', undefined],
+    ])('sends nothing when no number was given (%s)', async (_shape, phone) => {
       // "Given I provided a mobile number" — most registrations do not.
-      await handle({ buyerPhone: null });
-      expect(sms.send).not.toHaveBeenCalled();
-      await handle({ buyerPhone: undefined });
+      await handle({ buyerPhone: phone });
       expect(sms.send).not.toHaveBeenCalled();
     });
 
-    it('sends nothing to a landline or a foreign number', async () => {
+    it.each([
+      ['a landline', '021234567'],
+      ['a foreign number', '+14155550123'],
+    ])('sends nothing to %s', async (_shape, phone) => {
       // "and SMS is applicable". Neither can receive one, and both would be
       // billed.
-      await handle({ buyerPhone: '021234567' });
-      await handle({ buyerPhone: '+14155550123' });
+      await handle({ buyerPhone: phone });
       expect(sms.send).not.toHaveBeenCalled();
       // The email is unaffected: a number that cannot be texted is not a
       // reason to withhold somebody's ticket.
@@ -486,12 +495,72 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
       expect(idempotency.markCompleted).toHaveBeenCalledWith('msg-1');
     });
 
+    it('rides the retry ladder when the provider says the failure is worth another try', async () => {
+      sms.send.mockRejectedValueOnce(
+        new SmsDeliveryError(
+          'SMS provider refused the message (HTTP 503)',
+          true,
+        ),
+      );
+      await expect(handle()).rejects.toThrow('HTTP 503');
+      expect(idempotency.markCompleted).not.toHaveBeenCalled();
+    });
+
+    it('does NOT dead-letter the message when the text is refused for good', async () => {
+      // The whole point of sending it last. A wrong Twilio token answers 401
+      // and an unenabled region answers 400 for EVERY message, so retrying
+      // buys nothing and parking costs plenty: the ticket email and the VAT
+      // receipt are already away, and a DLQ replay after IDEMPOTENCY_TTL_
+      // SECONDS finds an empty ledger and sends a second copy of both.
+      sms.send.mockRejectedValueOnce(
+        new SmsDeliveryError(
+          'SMS provider refused the message (HTTP 401)',
+          false,
+        ),
+      );
+      await expect(handle()).resolves.toBeUndefined();
+      expect(email.send).toHaveBeenCalledTimes(1);
+      expect(receipts.send).toHaveBeenCalledTimes(1);
+      expect(idempotency.markCompleted).toHaveBeenCalledWith('msg-1');
+    });
+
+    it('does not re-send a text the provider already refused for good', async () => {
+      // Marked done like any other part: the organizer learns about it from
+      // the failed delivery row, not from a second attempt.
+      sms.send.mockRejectedValueOnce(
+        new SmsDeliveryError(
+          'SMS provider refused the message (HTTP 400)',
+          false,
+        ),
+      );
+      await handle();
+      await handle();
+      expect(sms.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('never puts the number in the line that reports a refused text', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      sms.send.mockRejectedValueOnce(
+        new SmsDeliveryError(
+          'SMS provider refused the message (HTTP 400)',
+          false,
+        ),
+      );
+      await handle();
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('812345678');
+    });
+
     it('never puts the number in a log line', async () => {
       // The consumer logs whatever handlers log, and a phone number is PII.
       const spies = (['log', 'warn', 'debug', 'error'] as const).map((level) =>
         jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined),
       );
       await handle({ buyerPhone: '081-234-5678' });
+      // Without this the second call finds every part already recorded and
+      // never reaches the branch that logs a number it cannot text.
+      done.clear();
       await handle({ buyerPhone: '021234567' });
 
       const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls));

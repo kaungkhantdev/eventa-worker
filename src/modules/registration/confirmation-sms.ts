@@ -9,11 +9,14 @@ import type { Locale } from '../../db/schema/events';
  * everything the email says about time, place and price is in the email, and a
  * text that repeated it would cost several segments to say less clearly.
  *
- * ALWAYS EVENTA'S OWN WORDING. The organizer's rewording (US-MSG-02) is
- * email-only: `message_templates` stores `email_subject_*` and `email_body_*`
- * and nothing writes an SMS body, so there is none to read. The API catalog's
- * description says so, because an organizer who rewords the confirmation and
- * then reads a text in Eventa's words deserves to have been told.
+ * EVENTA'S OWN WORDING, FOR NOW. `message_templates` does have `sms_body_en`
+ * and `sms_body_th` — they have existed since migration 0028 — but nothing
+ * writes them and nothing reads them yet, so this built-in copy is what an
+ * attendee gets. The organizer's rewording (US-MSG-02) reaches the EMAIL only.
+ * Wiring those columns up is a deliberate later step, not a missing migration;
+ * the API catalog's description says a text goes in Eventa's words today,
+ * because an organizer who rewords the confirmation and then reads their
+ * attendee's text deserves to have been told.
  */
 
 /** One language's text. Declared so EN and TH must stay the same shape. */
@@ -63,8 +66,17 @@ export function confirmationSms(details: ConfirmationSmsDetails): string {
 /**
  * The event name is the only value clipped. The reference and the link are
  * what the attendee needs to act on, and half of either is worse than none.
+ *
+ * Counted and cut by CODE POINT, not by `string.length`. An emoji straddling
+ * the boundary would otherwise be cut between its surrogates, and the lone
+ * half does not survive the trip: the Twilio transport builds its request body
+ * with `URLSearchParams`, which serialises an unpaired surrogate as U+FFFD —
+ * so the attendee reads a replacement character. Counting the same way also
+ * keeps the bound honest, since one emoji is one character to a reader and to
+ * the segment count, whatever its code units say.
  */
 function clip(eventName: string): string {
-  if (eventName.length <= MAX_EVENT_NAME_CHARS) return eventName;
-  return `${eventName.slice(0, MAX_EVENT_NAME_CHARS)}${ELLIPSIS}`;
+  const chars = [...eventName];
+  if (chars.length <= MAX_EVENT_NAME_CHARS) return eventName;
+  return `${chars.slice(0, MAX_EVENT_NAME_CHARS).join('')}${ELLIPSIS}`;
 }
