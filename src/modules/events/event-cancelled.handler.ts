@@ -20,13 +20,15 @@ import {
   eventCancelledSchema,
 } from './event-cancelled.schema';
 import {
+  type CancellationRecipient,
   EventRecipientsRepository,
-  type Recipient,
 } from './event-recipients.repository';
 
 /**
- * Handles `events.cancelled` (US-EVT-08). Messages every confirmed attendee that
- * the event is off (recipients resolved at send time, delivered per-recipient).
+ * Handles `events.cancelled` (US-EVT-08). Messages every confirmed attendee —
+ * and every registration still waiting for the organizer's approval
+ * (US-REG-02), which may have paid and has no ticket to show for it — that the
+ * event is off (recipients resolved at send time, delivered per-recipient).
  *
  * Three things shape it:
  *
@@ -71,7 +73,7 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
   ): Promise<void> {
     if (await this.switchedOff(payload, ctx)) return;
 
-    const recipients = await this.recipients.confirmedRecipients(
+    const recipients = await this.recipients.cancellationRecipients(
       payload.organizationId,
       payload.eventId,
     );
@@ -121,7 +123,7 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
 
   /** One reader's notice, in their language and with the organizer's words. */
   private message(
-    recipient: Recipient,
+    recipient: CancellationRecipient,
     locale: Locale,
     payload: EventCancelledEvent,
     wording: TemplateWording,
@@ -139,6 +141,7 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
       locale,
       subject: chosen.subject && fill(chosen.subject, fields),
       opening: chosen.body && fill(chosen.body, fields),
+      awaitingApproval: recipient.awaitingApproval,
     };
     return {
       to: recipient.email,

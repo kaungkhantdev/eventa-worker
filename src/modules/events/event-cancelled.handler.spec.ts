@@ -10,8 +10,8 @@ import type { MessageTemplatesRepository } from '../../common/messaging/message-
 import type { MessageContext } from '../../rabbitmq/message-handler.interface';
 import { EventCancelledHandler } from './event-cancelled.handler';
 import type {
+  CancellationRecipient,
   EventRecipientsRepository,
-  Recipient,
 } from './event-recipients.repository';
 
 const ctx: MessageContext = {
@@ -67,7 +67,7 @@ describe('EventCancelledHandler', () => {
       }),
     };
     recipients = {
-      confirmedRecipients: jest.fn(),
+      cancellationRecipients: jest.fn(),
       // Nobody has an attendee account unless a test says so, and the event
       // speaks English — the plainest case.
       attendeeLocales: jest.fn().mockResolvedValue(new Map()),
@@ -96,14 +96,29 @@ describe('EventCancelledHandler', () => {
     expect(handler.routingKey).toBe('events.cancelled');
   });
 
-  it('notifies every confirmed attendee that the event is cancelled', async () => {
-    recipients.confirmedRecipients.mockResolvedValue([
-      { email: 'anan@x.test', name: 'Anan' },
-    ] satisfies Recipient[]);
+  it('tells a registration still awaiting approval, in words for one (US-REG-02)', async () => {
+    // Paid and waiting for the organizer: no ticket, but money to give back —
+    // and until now, no word at all that the event was off.
+    recipients.cancellationRecipients.mockResolvedValue([
+      { email: 'malee@x.test', name: 'Malee', awaitingApproval: true },
+    ] satisfies CancellationRecipient[]);
 
     await handler.handle(rawEvent, ctx);
 
-    expect(recipients.confirmedRecipients).toHaveBeenCalledWith(7, 'e1');
+    expect(sent.map((m) => m.to)).toEqual(['malee@x.test']);
+    expect(sent[0].text).toMatch(/waiting for the organizer.s approval/i);
+    expect(sent[0].text).toMatch(/if you paid for it/i);
+    expect(sent[0].text).not.toMatch(/purchased a ticket/);
+  });
+
+  it('notifies every confirmed attendee that the event is cancelled', async () => {
+    recipients.cancellationRecipients.mockResolvedValue([
+      { email: 'anan@x.test', name: 'Anan', awaitingApproval: false },
+    ] satisfies CancellationRecipient[]);
+
+    await handler.handle(rawEvent, ctx);
+
+    expect(recipients.cancellationRecipients).toHaveBeenCalledWith(7, 'e1');
     expect(email.send).toHaveBeenCalledTimes(1);
     expect(sent[0].to).toBe('anan@x.test');
     expect(sent[0].subject).toMatch(/cancelled/i);
@@ -113,9 +128,9 @@ describe('EventCancelledHandler', () => {
 
   describe('the organizer’s kill switch (US-MSG-01)', () => {
     it('asks whether the cancellation notice is switched on', async () => {
-      recipients.confirmedRecipients.mockResolvedValue([
-        { email: 'anan@x.test', name: 'Anan' },
-      ] satisfies Recipient[]);
+      recipients.cancellationRecipients.mockResolvedValue([
+        { email: 'anan@x.test', name: 'Anan', awaitingApproval: false },
+      ] satisfies CancellationRecipient[]);
 
       await handler.handle(rawEvent, ctx);
 
@@ -124,9 +139,9 @@ describe('EventCancelledHandler', () => {
 
     it('sends nothing when the organizer has switched it off', async () => {
       templates.isActive.mockResolvedValue(false);
-      recipients.confirmedRecipients.mockResolvedValue([
-        { email: 'anan@x.test', name: 'Anan' },
-      ] satisfies Recipient[]);
+      recipients.cancellationRecipients.mockResolvedValue([
+        { email: 'anan@x.test', name: 'Anan', awaitingApproval: false },
+      ] satisfies CancellationRecipient[]);
 
       await handler.handle(rawEvent, ctx);
 
@@ -140,16 +155,16 @@ describe('EventCancelledHandler', () => {
 
       await handler.handle(rawEvent, ctx);
 
-      expect(recipients.confirmedRecipients).not.toHaveBeenCalled();
+      expect(recipients.cancellationRecipients).not.toHaveBeenCalled();
     });
   });
 
   it('tags each message for the delivery log (US-MSG-06)', async () => {
     // Without this the send happens and nothing can say afterwards that it
     // did — the whole point of the log is the messages that are IN it.
-    recipients.confirmedRecipients.mockResolvedValue([
-      { email: 'anan@x.test', name: 'Anan' },
-    ] satisfies Recipient[]);
+    recipients.cancellationRecipients.mockResolvedValue([
+      { email: 'anan@x.test', name: 'Anan', awaitingApproval: false },
+    ] satisfies CancellationRecipient[]);
 
     await handler.handle(rawEvent, ctx);
 
@@ -163,10 +178,10 @@ describe('EventCancelledHandler', () => {
 
   describe('language follows the person', () => {
     beforeEach(() =>
-      recipients.confirmedRecipients.mockResolvedValue([
-        { email: 'anan@x.test', name: 'Anan' },
-        { email: 'malee@x.test', name: 'Malee' },
-      ] satisfies Recipient[]),
+      recipients.cancellationRecipients.mockResolvedValue([
+        { email: 'anan@x.test', name: 'Anan', awaitingApproval: false },
+        { email: 'malee@x.test', name: 'Malee', awaitingApproval: false },
+      ] satisfies CancellationRecipient[]),
     );
 
     it('writes Thai to a reader whose own preference is Thai', async () => {
@@ -227,9 +242,9 @@ describe('EventCancelledHandler', () => {
 
   describe('the organizer’s own wording (US-MSG-02)', () => {
     beforeEach(() =>
-      recipients.confirmedRecipients.mockResolvedValue([
-        { email: 'anan@x.test', name: 'Anan' },
-      ] satisfies Recipient[]),
+      recipients.cancellationRecipients.mockResolvedValue([
+        { email: 'anan@x.test', name: 'Anan', awaitingApproval: false },
+      ] satisfies CancellationRecipient[]),
     );
 
     it('sends what the organizer wrote, with the fields filled', async () => {
@@ -271,10 +286,10 @@ describe('EventCancelledHandler', () => {
       email,
       seeded.idempotency,
     );
-    recipients.confirmedRecipients.mockResolvedValue([
-      { email: 'anan@x.test', name: 'Anan' },
-      { email: 'ben@x.test', name: 'Ben' },
-    ] satisfies Recipient[]);
+    recipients.cancellationRecipients.mockResolvedValue([
+      { email: 'anan@x.test', name: 'Anan', awaitingApproval: false },
+      { email: 'ben@x.test', name: 'Ben', awaitingApproval: false },
+    ] satisfies CancellationRecipient[]);
 
     await handler.handle(rawEvent, ctx);
 
@@ -282,11 +297,11 @@ describe('EventCancelledHandler', () => {
   });
 
   it('keeps notifying the rest when one recipient fails, then dead-letters (throws)', async () => {
-    recipients.confirmedRecipients.mockResolvedValue([
-      { email: 'ok1@x.test', name: 'A' },
-      { email: 'bad@x.test', name: 'B' },
-      { email: 'ok2@x.test', name: 'C' },
-    ] satisfies Recipient[]);
+    recipients.cancellationRecipients.mockResolvedValue([
+      { email: 'ok1@x.test', name: 'A', awaitingApproval: false },
+      { email: 'bad@x.test', name: 'B', awaitingApproval: false },
+      { email: 'ok2@x.test', name: 'C', awaitingApproval: false },
+    ] satisfies CancellationRecipient[]);
     (email.send as jest.Mock).mockImplementation((m: EmailMessage) => {
       if (m.to === 'bad@x.test') return Promise.reject(new Error('smtp 550'));
       sent.push(m);

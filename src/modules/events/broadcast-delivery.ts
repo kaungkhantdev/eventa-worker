@@ -22,10 +22,10 @@ export interface DeliveryResult {
  * delivers only the un-sent tail, once. Recipients are keyed by email (the confirmed
  * set is already distinct by email). Without a ledger, delivery is dedup-free.
  */
-export async function deliverToEach(
+export async function deliverToEach<R extends Recipient>(
   email: EmailProvider,
-  recipients: readonly Recipient[],
-  build: (recipient: Recipient) => EmailMessage,
+  recipients: readonly R[],
+  build: (recipient: R) => EmailMessage,
   ledger?: SentLedger,
 ): Promise<DeliveryResult> {
   let sent = 0;

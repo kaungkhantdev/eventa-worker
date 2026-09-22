@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import {
   CONFIRMED_ORDER_STATUS,
@@ -19,6 +19,18 @@ export interface Recipient {
   email: string;
   name: string;
 }
+
+/** Somebody told an event is off — holding a ticket, or waiting for one. */
+export interface CancellationRecipient extends Recipient {
+  /**
+   * Every registration they have for it is still waiting for the organizer's
+   * approval (US-REG-02): no ticket, and possibly money already taken.
+   */
+  awaitingApproval: boolean;
+}
+
+/** Pending, with its decision asked for, is waiting on the organizer. */
+const PENDING_ORDER_STATUS = 'pending';
 
 /**
  * Reads the confirmed-attendee recipient set for an event. eventa-api owns the
@@ -50,6 +62,48 @@ export class EventRecipientsRepository {
       )
       .groupBy(orders.buyerEmail);
     return rows.map((r) => ({ email: r.email, name: r.name }));
+  }
+
+  /**
+   * Everybody a cancellation must reach (US-EVT-08): the confirmed attendees,
+   * and the registrations still waiting for the organizer's approval
+   * (US-REG-02) — paid for or free, they were promised a decision, and a paid
+   * one's money is owed back. Not an order still waiting for its money, which
+   * holds nothing yet, nor one already turned down. Distinct by buyer email;
+   * somebody holding a ticket as well as a waiting registration is written to
+   * as a ticket holder.
+   */
+  async cancellationRecipients(
+    organizationId: number,
+    eventId: string,
+  ): Promise<CancellationRecipient[]> {
+    const rows = await this.db
+      .select({
+        email: orders.buyerEmail,
+        name: sql<string>`max(${orders.buyerName})`,
+        awaitingApproval: sql<boolean>`bool_and(${orders.status} = ${PENDING_ORDER_STATUS})`,
+      })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.organizationId, organizationId),
+          eq(orders.eventId, eventId),
+          isNull(orders.deletedAt),
+          or(
+            eq(orders.status, CONFIRMED_ORDER_STATUS),
+            and(
+              eq(orders.status, PENDING_ORDER_STATUS),
+              isNotNull(orders.approvalRequestedAt),
+            ),
+          ),
+        ),
+      )
+      .groupBy(orders.buyerEmail);
+    return rows.map((r) => ({
+      email: r.email,
+      name: r.name,
+      awaitingApproval: r.awaitingApproval,
+    }));
   }
 
   /**

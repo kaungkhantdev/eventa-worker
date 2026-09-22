@@ -9,7 +9,9 @@ import type { Locale } from '../../db/schema/events';
  *
  * The REFUND line is always last and always Eventa's, in both languages.
  * Somebody whose event was cancelled needs to know their money is coming back,
- * and that is not a sentence to leave to whoever was editing a template.
+ * and that is not a sentence to leave to whoever was editing a template. It
+ * speaks to a registration still awaiting approval in its own words: there is
+ * no ticket to mention, only a payment that may have been taken.
  */
 
 export interface CancellationNotice {
@@ -22,6 +24,11 @@ export interface CancellationNotice {
   subject?: string | null;
   /** The organizer's opening, already filled. Null or absent: use Eventa's. */
   opening?: string | null;
+  /**
+   * Their registration was still waiting for the organizer's approval
+   * (US-REG-02): no ticket to speak of, but perhaps a payment to give back.
+   */
+  awaitingApproval?: boolean;
 }
 
 interface Copy {
@@ -30,6 +37,8 @@ interface Copy {
   cancelled: (event: string) => string;
   reason: (reason: string) => string;
   refund: string;
+  /** The refund line for somebody who was still waiting for approval. */
+  refundAwaitingApproval: string;
 }
 
 const COPY: Record<Locale, Copy> = {
@@ -41,6 +50,8 @@ const COPY: Record<Locale, Copy> = {
     reason: (reason) => `Reason: ${reason}`,
     refund:
       'If you purchased a ticket, our team will process your refund to the original payment method.',
+    refundAwaitingApproval:
+      "Your registration was still waiting for the organizer's approval. If you paid for it, our team will refund your payment to the original payment method.",
   },
   th: {
     subject: (event) => `ยกเลิกแล้ว: ${event}`,
@@ -49,6 +60,8 @@ const COPY: Record<Locale, Copy> = {
     reason: (reason) => `เหตุผล: ${reason}`,
     refund:
       'หากคุณซื้อบัตรไว้ ทีมงานจะดำเนินการคืนเงินไปยังช่องทางการชำระเงินเดิมของคุณ',
+    refundAwaitingApproval:
+      'การลงทะเบียนของคุณยังรอการอนุมัติจากผู้จัดงานอยู่ หากคุณชำระเงินไว้แล้ว ทีมงานจะดำเนินการคืนเงินไปยังช่องทางการชำระเงินเดิมของคุณ',
   },
 };
 
@@ -68,5 +81,6 @@ export function cancellationBody(notice: CancellationNotice): string {
         // is a personalization field left unfilled.
         ...(notice.reason ? ['', t.reason(notice.reason)] : []),
       ];
-  return [...opening, '', t.refund].join('\n');
+  const refund = notice.awaitingApproval ? t.refundAwaitingApproval : t.refund;
+  return [...opening, '', refund].join('\n');
 }

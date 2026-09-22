@@ -58,4 +58,41 @@ describe('the cancellation notice, in the reader’s language (US-EVT-08)', () =
       ).toBe('Called off');
     });
   });
+  describe('somebody whose registration still awaits approval (US-REG-02)', () => {
+    it('tells them it was still waiting, and that a payment comes back — in English', () => {
+      const body = cancellationBody({
+        ...base,
+        locale: 'en',
+        awaitingApproval: true,
+      });
+      const last = body.split('\n').at(-1) ?? '';
+      expect(last).toMatch(/waiting for the organizer.s approval/i);
+      expect(last).toMatch(/if you paid for it/i);
+      expect(last).toMatch(/refund/i);
+      // Not the ticket holder's line: they never had a ticket.
+      expect(body).not.toMatch(/purchased a ticket/);
+    });
+
+    it('and in Thai, for a Thai reader', () => {
+      const body = cancellationBody({
+        ...base,
+        locale: 'th',
+        awaitingApproval: true,
+      });
+      const last = body.split('\n').at(-1) ?? '';
+      expect(last).toMatch(/รอการอนุมัติ/);
+      expect(last).toMatch(/คืนเงิน/);
+      expect(last).not.toMatch(/[A-Za-z]{3,}/);
+    });
+
+    it('keeps that line Eventa’s even under the organizer’s own wording', () => {
+      const body = cancellationBody({
+        ...base,
+        locale: 'en',
+        awaitingApproval: true,
+        opening: 'Off.',
+      });
+      expect(body.split('\n').at(-1)).toMatch(/if you paid for it/i);
+    });
+  });
 });
