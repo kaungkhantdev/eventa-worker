@@ -59,6 +59,7 @@ pnpm start:dev         # watch dev server (nest start --watch)
 pnpm build             # nest build → dist/  (nest-cli deleteOutDir wipes dist/ first)
 pnpm start:prod        # node dist/main
 pnpm lint              # eslint --fix (type-aware; also applies prettier)
+pnpm typecheck         # tsc --noEmit over src + test — the only type check the specs get
 pnpm format            # prettier --write
 pnpm test              # jest unit tests
 pnpm test:e2e          # jest e2e tests (separate config)
@@ -81,10 +82,10 @@ validation** (malformed / unknown-field / wrong-`version` payloads are handled, 
 
 - **Two separate jest configs.** Unit config is inline in `package.json` (`rootDir: src`, matches
   `*.spec.ts`) — put fast tests beside the code. E2e is `test/jest-e2e.json` (`rootDir: .`, matches
-  `*.e2e-spec.ts`) — put full-flow tests in `test/`.
-- **TypeScript is only partly strict.** `tsconfig.json` sets `strictNullChecks` but **not** full `strict`:
-  `noImplicitAny` is `false` and eslint's `no-explicit-any` is **off** — looser than the development
-  guide's "strict, no `any`" intent. Prefer explicit types; consider tightening before the code grows.
+  `*.e2e-spec.ts`) — put full-flow tests in `test/`. **Neither one type-checks:** `tsconfig.json` sets
+  `isolatedModules: true`, which puts ts-jest in transpile-only mode, and `tsconfig.build.json` excludes
+  the specs — so a spec can go green while it no longer compiles. `pnpm typecheck` must be green before
+  a commit.
 - **ESLint is type-aware** (`recommendedTypeChecked` + `projectService`); `no-floating-promises` and
   `no-unsafe-argument` are **warnings** — heed them, message handlers are all async. `module: nodenext`,
   `target: ES2023`.
@@ -214,7 +215,7 @@ the DI graph and the dedupe actually work.
 **Methods, TypeScript, naming**
 - **Small methods** — house target **≤ 10 lines**, ~40 hard ceiling; one level of abstraction each.
 - **TypeScript** — `readonly`, async/await, optional chaining, nullish coalescing; avoid `any`, `@ts-ignore`,
-  nested ternaries, deep nesting. *(tsconfig is only partly strict today — full `strict` is the target.)*
+  nested ternaries, deep nesting. Full `strict` is on, and `pnpm typecheck` holds the specs to it too.
 - **Explicit names** (`OrderConfirmedHandler`, `EmailProvider`); avoid `Helper`/`Util`/`Manager`.
 
 **Review checklist:** SRP/SOLID · no dup · no magic strings/numbers · tolerant-reader validation · idempotency
