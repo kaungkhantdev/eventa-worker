@@ -1,5 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNotNull, isNull, lt, max } from 'drizzle-orm';
+import {
+  type SQL,
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  max,
+} from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import { ACTIVE_HOLD, orderItems, orders, seatHolds } from '../../db/schema';
 import type { Tx } from '../../db/tenant';
@@ -8,6 +17,23 @@ import {
   type PassOnSettings,
   settleLapsedOffers,
 } from './waitlist-queue';
+
+/**
+ * Still on the buyer's checkout clock: placed, unpaid, and not waiting for an
+ * organizer's approval (US-REG-02).
+ */
+function stillUnpaid(): SQL | undefined {
+  return and(
+    eq(orders.status, 'pending'),
+    eq(orders.paymentStatus, 'pending'),
+    isNull(orders.approvalRequestedAt),
+    isNull(orders.deletedAt),
+  );
+}
+
+function nothingSwept(): SweepResult {
+  return { closed: [], lapsedOffers: 0, offered: [] };
+}
 
 /** An order the sweep closed — enough to say so, and nothing more. */
 export interface ExpiredOrder {
@@ -59,6 +85,16 @@ export class OrderExpiryRepository {
    * still be pending — a `failed` attempt is a buyer who can retry or switch
    * method, and their seats stay theirs until the TTL runs out on its own.
    *
+   * An order awaiting the organizer's approval (US-REG-02) is on nobody's
+   * checkout clock: a paid one has paid, a free one owes nothing, and closing
+   * it would throw away a decision nobody has made yet.
+   *
+   * The UPDATE repeats the whole condition rather than trusting the SELECT.
+   * Under READ COMMITTED, Postgres re-checks an UPDATE's WHERE once it has
+   * waited for the row's lock — so a payment that settled the order between
+   * the two statements (confirming it, or leaving it awaiting approval) is no
+   * longer overwritten with `expired`. Only the rows it actually closed go on.
+   *
    * One transaction, so an order and its holds never disagree about whether it
    * is over. Idempotent by construction: it selects by the data and holds no
    * cursor, so a second sweep racing the first simply finds nothing.
@@ -67,31 +103,34 @@ export class OrderExpiryRepository {
     const deadline = new Date(input.now.getTime() - input.graceMs);
     return this.db.transaction(async (tx) => {
       const lapsed = await tx
-        .select({
-          id: orders.id,
-          organizationId: orders.organizationId,
-          reference: orders.reference,
-        })
+        .select({ id: orders.id })
         .from(orders)
         .innerJoin(seatHolds, eq(seatHolds.orderId, orders.id))
-        .where(
-          and(
-            eq(orders.status, 'pending'),
-            eq(orders.paymentStatus, 'pending'),
-            isNull(orders.deletedAt),
-          ),
-        )
+        .where(stillUnpaid())
         .groupBy(orders.id)
         .having(lt(max(seatHolds.expiresAt), deadline))
         .limit(input.limit);
-      if (lapsed.length === 0)
-        return { closed: [], lapsedOffers: 0, offered: [] };
+      if (lapsed.length === 0) return nothingSwept();
 
-      const ids = lapsed.map((order) => order.id);
-      await tx
+      const closed = await tx
         .update(orders)
         .set({ status: 'expired', updatedAt: input.now })
-        .where(inArray(orders.id, ids));
+        .where(
+          and(
+            inArray(
+              orders.id,
+              lapsed.map((order) => order.id),
+            ),
+            stillUnpaid(),
+          ),
+        )
+        .returning({
+          id: orders.id,
+          organizationId: orders.organizationId,
+          reference: orders.reference,
+        });
+      if (closed.length === 0) return nothingSwept();
+      const ids = closed.map((order) => order.id);
       // The holds go with them. They stopped reserving anything the moment they
       // lapsed — availability filters on `expires_at` — but leaving them
       // `active` means the table never stops growing and every count of live
@@ -115,7 +154,7 @@ export class OrderExpiryRepository {
               ...input.waitlist,
             })
           : [];
-      return { closed: lapsed, lapsedOffers: offers.length, offered };
+      return { closed, lapsedOffers: offers.length, offered };
     });
   }
 

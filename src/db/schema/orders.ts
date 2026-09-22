@@ -57,6 +57,10 @@ export const orders = pgTable('orders', {
   offeredBy: uuid(),
   offerExpiresAt: timestamp({ withTimezone: true }),
   offerSkipped: integer(), // smallint in eventa-api
+  // When the order started waiting for the organizer's approval (US-REG-02).
+  // Pending with this set is on the ORGANIZER's clock, not the buyer's: the
+  // expiry sweep reads it only to leave such an order alone.
+  approvalRequestedAt: timestamp({ withTimezone: true }),
   // The money as checkout recorded it, read by the payment receipt. Integer
   // satang, VAT included; the fee is not stored — see `serviceFeeOf`.
   subtotalSatang: bigint({ mode: 'number' }).notNull(),
