@@ -41,6 +41,7 @@ describe('Sending scheduled announcements (e2e — US-MSG-04/05)', () => {
   let authorId: string;
   let eventId: string;
   let goneEventId: string;
+  let cancelledEventId: string;
   let seq = 0;
 
   beforeAll(async () => {
@@ -61,6 +62,13 @@ describe('Sending scheduled announcements (e2e — US-MSG-04/05)', () => {
     await pool.query(`UPDATE events SET deleted_at = now() WHERE id = $1`, [
       goneEventId,
     ]);
+    // What eventa-api's cancelEvent leaves behind: still there, not deleted.
+    cancelledEventId = await event('called-off');
+    await pool.query(
+      `UPDATE events SET status = 'cancelled', bucket = 'completed', cancelled_at = now()
+       WHERE id = $1`,
+      [cancelledEventId],
+    );
 
     // Two attendees, not three: one of them registered twice. A cancelled
     // registration is nobody's audience.
@@ -239,6 +247,26 @@ describe('Sending scheduled announcements (e2e — US-MSG-04/05)', () => {
     const dropped = await row(id);
     expect(dropped.status).toBe('cancelled');
     expect(dropped.cancelled_at).not.toBeNull();
+    expect(dropped.cancelled_by_user_id).toBeNull();
+    expect(dropped.sent_at).toBeNull();
+    expect(await sends()).toEqual([]);
+  });
+
+  it('drops a due one whose event was cancelled — the attendees were told it is off', async () => {
+    // The organizer cancelled the event, so eventa-api already emailed everyone
+    // it is off. "Doors at 6 — see you in Hall B" arriving days later would
+    // contradict that, and the words were written when the event was still on.
+    const id = await announcement({
+      dueInMs: -MINUTE,
+      eventId: cancelledEventId,
+    });
+
+    const result = ours(await sweep());
+
+    expect(result.sent).toEqual([]);
+    expect(result.dropped).toEqual([{ id, organizationId: orgId }]);
+    const dropped = await row(id);
+    expect(dropped.status).toBe('cancelled');
     expect(dropped.cancelled_by_user_id).toBeNull();
     expect(dropped.sent_at).toBeNull();
     expect(await sends()).toEqual([]);

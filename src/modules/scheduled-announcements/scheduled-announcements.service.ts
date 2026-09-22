@@ -38,7 +38,7 @@ export class ScheduledAnnouncementsService {
     if (dropped.length > 0) {
       this.logger.warn(
         { ids: dropped.map((a) => a.id) },
-        'dropped scheduled announcements whose event was deleted',
+        'dropped scheduled announcements whose event was deleted or cancelled',
       );
     }
     if (sent.length > 0) {

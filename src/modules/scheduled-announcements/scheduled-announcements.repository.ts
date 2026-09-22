@@ -3,6 +3,7 @@ import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import {
   CANCELLED_ANNOUNCEMENT,
+  CANCELLED_EVENT_STATUS,
   CONFIRMED_ORDER_STATUS,
   SCHEDULED_ANNOUNCEMENT,
   SENT_ANNOUNCEMENT,
@@ -21,7 +22,7 @@ export interface SentAnnouncement {
   recipientCount: number;
 }
 
-/** A due announcement whose event had gone, so it was called off instead. */
+/** A due announcement whose event had gone or been cancelled, so it was called off instead. */
 export interface DroppedAnnouncement {
   id: number;
   organizationId: number;
@@ -92,8 +93,10 @@ export class ScheduledAnnouncementsRepository {
    * organizer's cancel competes for.
    *
    * Left-joined to events on the organization too, so an announcement can never
-   * be matched to another workspace's event. An event that is missing or
-   * soft-deleted is "not live".
+   * be matched to another workspace's event. An event that is missing,
+   * soft-deleted or CANCELLED is "not live": its attendees have already been
+   * told it is off (eventa-api fans that out on cancellation), and the words
+   * waiting here were written while it was still going ahead.
    */
   private claimDue(tx: Tx, input: SendDueInput) {
     return tx
@@ -104,7 +107,8 @@ export class ScheduledAnnouncementsRepository {
         subject: announcements.subject,
         body: announcements.body,
         sentByUserId: announcements.sentByUserId,
-        eventLive: sql<boolean>`(${events.id} IS NOT NULL AND ${events.deletedAt} IS NULL)`,
+        eventLive: sql<boolean>`(${events.id} IS NOT NULL AND ${events.deletedAt} IS NULL
+                                 AND ${events.status} <> ${CANCELLED_EVENT_STATUS})`,
       })
       .from(announcements)
       .leftJoin(
@@ -160,9 +164,13 @@ export class ScheduledAnnouncementsRepository {
   }
 
   /**
-   * Call off one whose event is gone. A send-now to a deleted event is a 404;
-   * sending it later anyway would write to the attendees of an event the
-   * organizer took down. `cancelled_by_user_id` stays null: nobody did.
+   * Call off one whose event is gone or cancelled. A send-now to a deleted
+   * event is a 404; sending it later anyway would write to the attendees of an
+   * event the organizer took down. A cancelled event's attendees have already
+   * had the cancellation email, and this was composed before it — the organizer
+   * never chose to send it *after* calling the event off. (Writing to them on
+   * purpose is still possible: a send-now names its words at the time it goes.)
+   * `cancelled_by_user_id` stays null: nobody did.
    */
   private async drop(
     tx: Tx,
