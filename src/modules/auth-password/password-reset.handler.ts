@@ -13,6 +13,15 @@ import {
 const SUBJECT = 'Reset your Eventa password';
 
 /**
+ * Which workspace the link opens. One address can hold an organizer account in
+ * several workspaces and gets one email per account (US-ACC-04); without this
+ * the emails are identical and only one of them opens the workspace wanted.
+ */
+function forWorkspace(workspaceName: string | undefined): string {
+  return workspaceName ? ` for the “${workspaceName}” workspace` : '';
+}
+
+/**
  * Handles `identity.password_reset_requested`: sends the reset email carrying the
  * single-use link (US-ACC-04). The link/token is supplied by the API; this handler
  * only delivers it.
@@ -34,7 +43,7 @@ export class PasswordResetHandler extends ValidatedHandler<PasswordResetRequeste
     await this.email.send({
       to: payload.email,
       subject: SUBJECT,
-      text: this.body(payload.name, payload.resetUrl),
+      text: this.body(payload),
     });
     this.logger.log(
       { correlationId: ctx.correlationId, userId: payload.userId },
@@ -42,11 +51,15 @@ export class PasswordResetHandler extends ValidatedHandler<PasswordResetRequeste
     );
   }
 
-  private body(name: string, resetUrl: string): string {
+  private body({
+    name,
+    workspaceName,
+    resetUrl,
+  }: PasswordResetRequestedEvent): string {
     return [
       `Hi ${name},`,
       '',
-      'We received a request to reset your Eventa password. Set a new one here:',
+      `We received a request to reset your Eventa password${forWorkspace(workspaceName)}. Set a new one here:`,
       resetUrl,
       '',
       'This link expires in 1 hour and can be used once. If you didn’t ask for this, you can ignore this email.',

@@ -52,6 +52,22 @@ describe('PasswordResetHandler', () => {
     );
   });
 
+  /**
+   * One address can hold an organizer account in several workspaces and gets
+   * one email per account, so each has to say which workspace its link opens.
+   */
+  it('names the workspace the link opens, when the event carries one', async () => {
+    await handler.handle({ ...rawEvent, workspaceName: 'Acme Events' }, ctx);
+
+    expect(sent[0].text).toContain('“Acme Events”');
+  });
+
+  it('names no workspace when the event carries none', async () => {
+    await handler.handle(rawEvent, ctx);
+
+    expect(sent[0].text).not.toMatch(/workspace/i);
+  });
+
   it('rejects a malformed event', async () => {
     await expect(handler.handle({ userId: 'u1' }, ctx)).rejects.toBeDefined();
     expect(email.send).not.toHaveBeenCalled();
