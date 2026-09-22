@@ -2,49 +2,48 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
 import { fill, pickWording } from '../../common/messaging/merge-fields';
-import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
+import {
+  MessageTemplatesRepository,
+  type TemplateWording,
+} from '../../common/messaging/message-templates.repository';
+import type { Locale } from '../../db/schema/events';
 import { CANCELLATION_NOTICE_SLUG } from '../../db/schema/messaging';
 import {
   type MessageContext,
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
 import { deliverToEach } from './broadcast-delivery';
+import { cancellationBody, cancellationSubject } from './cancellation-notice';
 import {
   EVENTS_CANCELLED,
   type EventCancelledEvent,
   eventCancelledSchema,
 } from './event-cancelled.schema';
-import { EventRecipientsRepository } from './event-recipients.repository';
-
-const SUBJECT_PREFIX = 'Cancelled: ';
-
-/**
- * A cancellation goes to every confirmed attendee at once, and the payload
- * carries no per-person language. English until the event's own locale reaches
- * this event — which is a change to what eventa-api publishes, not to this.
- */
-const DEFAULT_LOCALE = 'en' as const;
-
-function fieldsFor(
-  attendeeName: string,
-  payload: { name: string; reason: string },
-): Record<string, string> {
-  return {
-    first_name: attendeeName,
-    event_name: payload.name,
-    reason: payload.reason,
-  };
-}
+import {
+  EventRecipientsRepository,
+  type Recipient,
+} from './event-recipients.repository';
 
 /**
  * Handles `events.cancelled` (US-EVT-08). Messages every confirmed attendee that
  * the event is off (recipients resolved at send time, delivered per-recipient).
  *
- * The organizer can switch it off (`message_templates.active`, US-MSG-01), and
- * an absent row means on. eventa-api warns before letting anyone disable this
- * one — attendees who paid for an event are entitled to hear it is cancelled —
- * but the decision is theirs, and this handler honours it. Checking it here is
- * what makes that switch real rather than decorative.
+ * Three things shape it:
+ *
+ * - **The organizer can switch it off** (`message_templates.active`, US-MSG-01),
+ *   and an absent row means on. eventa-api warns before letting anyone disable
+ *   this one — attendees who paid for an event are entitled to hear it is off —
+ *   but the decision is theirs, and checking it here is what makes that switch
+ *   real rather than decorative.
+ * - **Language follows the PERSON**: their own preference, then the event's,
+ *   then the workspace's — the same order the registration confirmation uses,
+ *   so nobody gets their ticket in Thai and their cancellation in English. It
+ *   is resolved from the database rather than the payload, because a
+ *   cancellation goes to everybody at once and only the database knows each of
+ *   them.
+ * - **The organizer's wording is chosen per reader** (US-MSG-02), so their Thai
+ *   reaches their Thai attendees. It replaces the explanation, never the refund
+ *   line.
  *
  * The rest of US-EVT-08's fan-out — queue refunds, void issued tickets, clear the
  * waitlist — is intentionally NOT done here: refunds and ticket state are the
@@ -71,19 +70,22 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
     ctx: MessageContext,
   ): Promise<void> {
     if (await this.switchedOff(payload, ctx)) return;
-    // The organizer's own wording, where they wrote any (US-MSG-02). Read once
-    // for the batch rather than per recipient.
-    const wording = pickWording(
-      await this.templates.wordingFor(
-        payload.organizationId,
-        CANCELLATION_NOTICE_SLUG,
-      ),
-      DEFAULT_LOCALE,
-    );
+
     const recipients = await this.recipients.confirmedRecipients(
       payload.organizationId,
       payload.eventId,
     );
+    // Everything a message needs, read ONCE for the batch — never a query per
+    // recipient, which on a 2,000-person event is 2,000 round trips.
+    const [own, fallback, wording] = await Promise.all([
+      this.recipients.attendeeLocales(recipients.map((r) => r.email)),
+      this.recipients.fallbackLocale(payload.organizationId, payload.eventId),
+      this.templates.wordingFor(
+        payload.organizationId,
+        CANCELLATION_NOTICE_SLUG,
+      ),
+    ]);
+
     const ledger = ctx.messageId
       ? this.idempotency.recipientLedger(ctx.messageId)
       : undefined;
@@ -91,11 +93,7 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
       this.email,
       recipients,
       (r) => ({
-        to: r.email,
-        subject: wording.subject
-          ? fill(wording.subject, fieldsFor(r.name, payload))
-          : `${SUBJECT_PREFIX}${payload.name}`,
-        text: this.body(r.name, payload.name, payload.reason, wording.body),
+        ...this.message(r, own.get(r.email) ?? fallback, payload, wording),
         delivery: {
           organizationId: payload.organizationId,
           kind: CANCELLATION_NOTICE_SLUG,
@@ -121,6 +119,34 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
     }
   }
 
+  /** One reader's notice, in their language and with the organizer's words. */
+  private message(
+    recipient: Recipient,
+    locale: Locale,
+    payload: EventCancelledEvent,
+    wording: TemplateWording,
+  ): { to: string; subject: string; text: string } {
+    const chosen = pickWording(wording, locale);
+    const fields = {
+      first_name: recipient.name,
+      event_name: payload.name,
+      reason: payload.reason,
+    };
+    const notice = {
+      attendeeName: recipient.name,
+      eventName: payload.name,
+      reason: payload.reason,
+      locale,
+      subject: chosen.subject && fill(chosen.subject, fields),
+      opening: chosen.body && fill(chosen.body, fields),
+    };
+    return {
+      to: recipient.email,
+      subject: cancellationSubject(notice),
+      text: cancellationBody(notice),
+    };
+  }
+
   /**
    * Asked BEFORE the recipients are read. A message that will not be sent is no
    * reason to pull a list of people's names and addresses out of the database.
@@ -139,39 +165,5 @@ export class EventCancelledHandler extends ValidatedHandler<EventCancelledEvent>
       'Cancellation notice is switched off for this workspace',
     );
     return true;
-  }
-
-  /**
-   * An organizer's wording replaces the explanation, never the refund line.
-   *
-   * Somebody whose event was cancelled needs to know their money is coming
-   * back, and that is not a sentence to leave to whoever was editing a
-   * template at the time.
-   */
-  private body(
-    attendeeName: string,
-    eventName: string,
-    reason: string,
-    override?: string | null,
-  ): string {
-    const lines = override
-      ? [
-          fill(override, {
-            first_name: attendeeName,
-            event_name: eventName,
-            reason,
-          }),
-        ]
-      : [
-          `Hi ${attendeeName},`,
-          '',
-          `We're sorry to let you know that "${eventName}" has been cancelled.`,
-          ...(reason ? ['', `Reason: ${reason}`] : []),
-        ];
-    lines.push(
-      '',
-      'If you purchased a ticket, our team will process your refund to the original payment method.',
-    );
-    return lines.join('\n');
   }
 }

@@ -68,6 +68,10 @@ describe('EventCancelledHandler', () => {
     };
     recipients = {
       confirmedRecipients: jest.fn(),
+      // Nobody has an attendee account unless a test says so, and the event
+      // speaks English — the plainest case.
+      attendeeLocales: jest.fn().mockResolvedValue(new Map()),
+      fallbackLocale: jest.fn().mockResolvedValue('en'),
     } as unknown as jest.Mocked<EventRecipientsRepository>;
     templates = {
       isActive: jest.fn().mockResolvedValue(true),
@@ -154,6 +158,70 @@ describe('EventCancelledHandler', () => {
       kind: 'cancellation-notice',
       recipientName: 'Anan',
       eventId: 'e1',
+    });
+  });
+
+  describe('language follows the person', () => {
+    beforeEach(() =>
+      recipients.confirmedRecipients.mockResolvedValue([
+        { email: 'anan@x.test', name: 'Anan' },
+        { email: 'malee@x.test', name: 'Malee' },
+      ] satisfies Recipient[]),
+    );
+
+    it('writes Thai to a reader whose own preference is Thai', async () => {
+      recipients.attendeeLocales.mockResolvedValue(
+        new Map([['malee@x.test', 'th' as const]]),
+      );
+
+      await handler.handle(rawEvent, ctx);
+
+      const toMalee = sent.find((m) => m.to === 'malee@x.test')!;
+      const toAnan = sent.find((m) => m.to === 'anan@x.test')!;
+      expect(toMalee.text).toContain('สวัสดีคุณ Malee');
+      // One batch, two languages — each reader gets their own.
+      expect(toAnan.text).toContain('Hi Anan');
+    });
+
+    it('falls back to the event’s language for somebody with no account', async () => {
+      recipients.fallbackLocale.mockResolvedValue('th');
+
+      await handler.handle(rawEvent, ctx);
+
+      expect(sent.every((m) => m.text.includes('สวัสดีคุณ'))).toBe(true);
+    });
+
+    it('reads the languages ONCE for the batch, never per recipient', async () => {
+      // On a 2,000-person event, a query per recipient is 2,000 round trips.
+      await handler.handle(rawEvent, ctx);
+
+      expect(recipients.attendeeLocales).toHaveBeenCalledTimes(1);
+      expect(recipients.attendeeLocales).toHaveBeenCalledWith([
+        'anan@x.test',
+        'malee@x.test',
+      ]);
+    });
+
+    it('sends the organizer’s THAI wording to a Thai reader', async () => {
+      // This is the defect it fixes: Thai wording was saved and never sent.
+      recipients.attendeeLocales.mockResolvedValue(
+        new Map([['malee@x.test', 'th' as const]]),
+      );
+      templates.wordingFor.mockResolvedValue({
+        subjectEn: 'Called off',
+        bodyEn: 'Sorry {{first_name}}.',
+        subjectTh: 'ยกเลิกงาน',
+        bodyTh: 'ขออภัยคุณ {{first_name}}',
+      });
+
+      await handler.handle(rawEvent, ctx);
+
+      const toMalee = sent.find((m) => m.to === 'malee@x.test')!;
+      expect(toMalee.subject).toBe('ยกเลิกงาน');
+      expect(toMalee.text).toContain('ขออภัยคุณ Malee');
+      expect(sent.find((m) => m.to === 'anan@x.test')!.subject).toBe(
+        'Called off',
+      );
     });
   });
 
