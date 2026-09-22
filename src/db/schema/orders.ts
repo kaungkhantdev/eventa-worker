@@ -1,5 +1,6 @@
 import {
   bigint,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -47,6 +48,22 @@ export const orders = pgTable('orders', {
   buyerEmail: text().notNull(), // citext in eventa-api; read as text here
   status: orderStatusEnum().notNull(),
   paymentStatus: paymentStatusEnum().notNull(),
+  seats: integer().notNull(), // smallint in eventa-api
+  /** When they joined — the waitlist is first come, first served by this. */
+  registeredAt: timestamp({ withTimezone: true }).notNull(),
+  // A waitlist offer (US-REG-04). The expiry sweep WRITES these when it passes
+  // a lapsed offer on: `offeredBy` null says the queue did it, not a person.
+  offeredAt: timestamp({ withTimezone: true }),
+  offeredBy: uuid(),
+  offerExpiresAt: timestamp({ withTimezone: true }),
+  offerSkipped: integer(), // smallint in eventa-api
+  // The money as checkout recorded it, read by the payment receipt. Integer
+  // satang, VAT included; the fee is not stored — see `serviceFeeOf`.
+  subtotalSatang: bigint({ mode: 'number' }).notNull(),
+  discountAmountSatang: bigint({ mode: 'number' }).notNull(),
+  vatAmountSatang: bigint({ mode: 'number' }).notNull(),
+  totalSatang: bigint({ mode: 'number' }).notNull(),
+  currency: text().notNull(), // char(3) in eventa-api
   updatedAt: timestamp({ withTimezone: true }).notNull(),
   deletedAt: timestamp({ withTimezone: true }),
 });

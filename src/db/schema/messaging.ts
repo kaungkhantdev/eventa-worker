@@ -21,6 +21,15 @@ export const messageChannelEnum = pgEnum('message_channel', ['email', 'sms']);
  */
 export const REGISTRATION_CONFIRMATION_SLUG = 'registration-confirmation';
 export const CANCELLATION_NOTICE_SLUG = 'cancellation-notice';
+/** The itemized VAT receipt for a paid registration (US-SET-10). */
+export const PAYMENT_RECEIPT_SLUG = 'payment-receipt';
+/**
+ * A seat offered to someone on the waitlist (US-REG-04). Its switch also
+ * governs the notice that an offer lapsed — somebody never told of an offer
+ * should not be told it expired — which logs under its own kind below.
+ */
+export const WAITLIST_OFFER_SLUG = 'waitlist-offer';
+export const WAITLIST_OFFER_EXPIRED_KIND = 'waitlist-offer-expired';
 
 /**
  * Kinds that appear in the delivery log but are not catalog templates: a

@@ -1,7 +1,11 @@
 import type { EmailProvider } from '../../common/email/email.provider';
-import type { IdempotencyService } from '../../common/idempotency/idempotency.service';
+import type {
+  IdempotencyService,
+  SentLedger,
+} from '../../common/idempotency/idempotency.service';
 import type { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
 import type { MessageContext } from '../../rabbitmq/message-handler.interface';
+import type { ReceiptSender } from '../payments/receipt-sender';
 import type { ConfirmationSource } from './registration.repository';
 import type { RegistrationRepository } from './registration.repository';
 import { RegistrationConfirmedHandler } from './registration-confirmed.handler';
@@ -65,9 +69,19 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
   let repo: jest.Mocked<RegistrationRepository>;
   let templates: jest.Mocked<MessageTemplatesRepository>;
   let idempotency: jest.Mocked<IdempotencyService>;
+  let receipts: jest.Mocked<ReceiptSender>;
+  let done: Set<string>;
   let handler: RegistrationConfirmedHandler;
 
   beforeEach(() => {
+    done = new Set();
+    const ledger: SentLedger = {
+      wasSent: (part) => Promise.resolve(done.has(part)),
+      markSent: (part) => {
+        done.add(part);
+        return Promise.resolve();
+      },
+    };
     email = { send: jest.fn().mockResolvedValue(undefined) };
     repo = {
       loadConfirmation: jest.fn().mockResolvedValue(source()),
@@ -85,12 +99,17 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
     idempotency = {
       isCompleted: jest.fn().mockResolvedValue(false),
       markCompleted: jest.fn().mockResolvedValue(undefined),
+      recipientLedger: jest.fn().mockReturnValue(ledger),
     } as unknown as jest.Mocked<IdempotencyService>;
+    receipts = {
+      send: jest.fn().mockResolvedValue('sent'),
+    } as unknown as jest.Mocked<ReceiptSender>;
     handler = new RegistrationConfirmedHandler(
       email,
       repo,
       templates,
       idempotency,
+      receipts,
     );
   });
 
@@ -265,6 +284,75 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
     repo.loadConfirmation.mockResolvedValue(source({ tickets: [] }));
     await handle();
     expect(email.send).not.toHaveBeenCalled();
-    expect(idempotency.markCompleted).not.toHaveBeenCalled();
+  });
+
+  describe('the payment receipt (US-SET-10)', () => {
+    const order = {
+      organizationId: ORG,
+      orderId: ORDER_ID,
+      eventId: 'e-1',
+      buyerEmail: 'anan@example.test',
+    };
+
+    it('follows the confirmation for a paid order', async () => {
+      const sequence: string[] = [];
+      email.send.mockImplementation(() => {
+        sequence.push('confirmation');
+        return Promise.resolve();
+      });
+      receipts.send.mockImplementation(() => {
+        sequence.push('receipt');
+        return Promise.resolve('sent');
+      });
+      await handle();
+      expect(receipts.send).toHaveBeenCalledWith(order);
+      expect(sequence).toEqual(['confirmation', 'receipt']);
+    });
+
+    it('is not sent for a free registration', async () => {
+      await handle({ paid: false, totalSatang: 0 });
+      expect(receipts.send).not.toHaveBeenCalled();
+    });
+
+    it('still goes when the confirmation is switched off', async () => {
+      // Two messages, two switches: turning off one is not turning off both.
+      templates.isActive.mockResolvedValue(false);
+      await handle();
+      expect(email.send).not.toHaveBeenCalled();
+      expect(receipts.send).toHaveBeenCalledWith(order);
+    });
+
+    it('still goes when the tickets have since been voided', async () => {
+      // A receipt is about the money, and the money was taken. Were it given
+      // back, the sender finds no settled payment and sends nothing itself.
+      repo.loadConfirmation.mockResolvedValue(source({ tickets: [] }));
+      await handle();
+      expect(receipts.send).toHaveBeenCalledWith(order);
+    });
+
+    it('is retried on redelivery WITHOUT sending the confirmation twice', async () => {
+      receipts.send.mockRejectedValueOnce(new Error('SMTP down'));
+      await expect(handle()).rejects.toThrow('SMTP down');
+      expect(idempotency.markCompleted).not.toHaveBeenCalled();
+
+      await handle();
+      expect(email.send).toHaveBeenCalledTimes(1);
+      expect(receipts.send).toHaveBeenCalledTimes(2);
+      expect(idempotency.markCompleted).toHaveBeenCalledWith('msg-1');
+    });
+
+    it('marks the message done only once the receipt is away too', async () => {
+      const sequence: string[] = [];
+      receipts.send.mockImplementation(() => {
+        sequence.push('receipt');
+        return Promise.resolve('sent');
+      });
+      idempotency.markCompleted.mockImplementation(() => {
+        sequence.push('mark');
+        return Promise.resolve();
+      });
+      await handle();
+      expect(sequence).toEqual(['receipt', 'mark']);
+    });
   });
 });

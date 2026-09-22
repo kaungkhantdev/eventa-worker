@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
-import { IdempotencyService } from '../../common/idempotency/idempotency.service';
+import {
+  IdempotencyService,
+  type SentLedger,
+} from '../../common/idempotency/idempotency.service';
 import { fill, pickWording } from '../../common/messaging/merge-fields';
 import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
 import { REGISTRATION_CONFIRMATION_SLUG } from '../../db/schema/messaging';
@@ -9,6 +12,7 @@ import {
   type MessageContext,
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
+import { ReceiptSender } from '../payments/receipt-sender';
 import {
   type ConfirmationDetails,
   confirmationBody,
@@ -27,6 +31,10 @@ import type {
 import { RegistrationRepository } from './registration.repository';
 
 const DEFAULT_CURRENCY = 'THB';
+
+/** The two emails one confirmed order can owe, each recorded once it is done. */
+const CONFIRMATION_PART = 'confirmation';
+const RECEIPT_PART = 'receipt';
 
 /**
  * Handles `registration.confirmed` (US-MSG-01): the email that carries the
@@ -49,8 +57,15 @@ const DEFAULT_CURRENCY = 'THB';
  *   then the workspace's, then English. Ticket delivery is transactional, so it
  *   is not subject to any marketing opt-out.
  *
- * Completion is recorded only AFTER the send, so a crash mid-flight is
- * re-processed on redelivery rather than silently skipped.
+ * - **A paid order also gets its receipt** (US-SET-10), sent after the
+ *   confirmation by `ReceiptSender`, which has its own two switches. The
+ *   consumer allows one handler per routing key, so the receipt is sent from
+ *   here rather than from a second handler that would silently replace this one.
+ *
+ * Each of the two emails is recorded as done once it is away, and the message
+ * as a whole only after both. A crash between them is re-processed on
+ * redelivery, and sends only what is still owed: the attendee gets the receipt
+ * they missed, not a second copy of their tickets.
  */
 @Injectable()
 export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationConfirmedEvent> {
@@ -63,6 +78,7 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
     private readonly repo: RegistrationRepository,
     private readonly templates: MessageTemplatesRepository,
     private readonly idempotency: IdempotencyService,
+    private readonly receipts: ReceiptSender,
   ) {
     super();
   }
@@ -72,6 +88,20 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
     ctx: MessageContext,
   ): Promise<void> {
     if (await this.alreadySent(ctx)) return;
+    const done = ctx.messageId
+      ? this.idempotency.recipientLedger(ctx.messageId)
+      : null;
+    await once(done, CONFIRMATION_PART, () => this.confirm(payload, ctx));
+    if (isPaid(payload)) {
+      await once(done, RECEIPT_PART, () => this.sendReceipt(payload, ctx));
+    }
+    if (ctx.messageId) await this.idempotency.markCompleted(ctx.messageId);
+  }
+
+  private async confirm(
+    payload: RegistrationConfirmedEvent,
+    ctx: MessageContext,
+  ): Promise<void> {
     if (
       !(await this.templates.isActive(
         payload.organizationId,
@@ -138,7 +168,6 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
         eventId: payload.eventId,
       },
     });
-    if (ctx.messageId) await this.idempotency.markCompleted(ctx.messageId);
     this.logger.log(
       {
         correlationId: ctx.correlationId,
@@ -147,6 +176,22 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
         locale: details.locale,
       },
       'Sent registration confirmation',
+    );
+  }
+
+  private async sendReceipt(
+    payload: RegistrationConfirmedEvent,
+    ctx: MessageContext,
+  ): Promise<void> {
+    const outcome = await this.receipts.send({
+      organizationId: payload.organizationId,
+      orderId: payload.orderId,
+      eventId: payload.eventId,
+      buyerEmail: payload.buyerEmail,
+    });
+    this.logger.log(
+      { correlationId: ctx.correlationId, orderId: payload.orderId, outcome },
+      'Payment receipt',
     );
   }
 
@@ -165,11 +210,30 @@ export class RegistrationConfirmedHandler extends ValidatedHandler<RegistrationC
       isOnline: source.event.isOnline,
       totalSatang: payload.totalSatang,
       currency: payload.currency ?? DEFAULT_CURRENCY,
-      paid: payload.paid ?? payload.totalSatang > 0,
+      paid: isPaid(payload),
       tickets: source.tickets,
       ticketsUrl: payload.ticketsUrl,
     };
   }
+}
+
+/**
+ * Money changed hands. Older producers omitted `paid`, and for them a total
+ * above nothing is the same fact.
+ */
+function isPaid(payload: RegistrationConfirmedEvent): boolean {
+  return payload.paid ?? payload.totalSatang > 0;
+}
+
+/** Run `work` unless this message already did it; record it once it has. */
+async function once(
+  done: SentLedger | null,
+  part: string,
+  work: () => Promise<void>,
+): Promise<void> {
+  if (done && (await done.wasSent(part))) return;
+  await work();
+  await done?.markSent(part);
 }
 
 /** The person's own choice first, then the event's, then the workspace's. */

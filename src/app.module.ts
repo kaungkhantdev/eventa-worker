@@ -13,6 +13,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
 import { EventsModule } from './modules/events/events.module';
 import { ScheduledMessagesModule } from './modules/scheduled-messages/scheduled-messages.module';
+import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { RegistrationModule } from './modules/registration/registration.module';
@@ -42,6 +43,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     AuthTwoFactorModule,
     EventsModule,
     ScheduledMessagesModule,
+    WaitlistModule,
     RegistrationModule,
     PaymentsModule,
     OrderExpiryModule,

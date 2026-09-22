@@ -36,8 +36,16 @@ export const envSchema = z
     ORDER_EXPIRY_BATCH: z.coerce.number().int().positive().default(200),
 
     /**
+     * The waitlist (US-REG-04): how long someone offered a seat has to pay for
+     * it. Read when the expiry sweep passes a lapsed offer to the next person
+     * in line; eventa-api reads the same name for the offers organizers make.
+     */
+    WAITLIST_OFFER_HOURS: z.coerce.number().int().positive().default(24),
+
+    /**
      * Where the attendee-facing site lives, for links written into email —
-     * the survey link in the post-event thank-you (US-MSG-08).
+     * the survey link in the post-event thank-you (US-MSG-08), the tickets in
+     * the reminder, and the page a waitlist offer is paid on (US-REG-04).
      *
      * The same name eventa-api uses. OPTIONAL here: without it the thank-you
      * job does not run and says why, rather than refusing to boot a worker

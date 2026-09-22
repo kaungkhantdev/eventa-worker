@@ -1,7 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, lt, max } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, lt, max } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
-import { ACTIVE_HOLD, orders, seatHolds } from '../../db/schema';
+import { ACTIVE_HOLD, orderItems, orders, seatHolds } from '../../db/schema';
+import type { Tx } from '../../db/tenant';
+import {
+  type LapsedOffer,
+  type PassOnSettings,
+  settleLapsedOffers,
+} from './waitlist-queue';
 
 /** An order the sweep closed — enough to say so, and nothing more. */
 export interface ExpiredOrder {
@@ -14,6 +20,17 @@ export interface ExpireInput {
   now: Date;
   graceMs: number;
   limit: number;
+  /** How a lapsed waitlist offer is passed on (US-REG-04). */
+  waitlist: Omit<PassOnSettings, 'now'>;
+}
+
+/** What one sweep did. */
+export interface SweepResult {
+  closed: ExpiredOrder[];
+  /** How many of those were waitlist offers nobody took up. */
+  lapsedOffers: number;
+  /** References the freed seats were offered to, in line order. */
+  offered: string[];
 }
 
 /**
@@ -46,7 +63,7 @@ export class OrderExpiryRepository {
    * is over. Idempotent by construction: it selects by the data and holds no
    * cursor, so a second sweep racing the first simply finds nothing.
    */
-  async expireLapsed(input: ExpireInput): Promise<ExpiredOrder[]> {
+  async expireLapsed(input: ExpireInput): Promise<SweepResult> {
     const deadline = new Date(input.now.getTime() - input.graceMs);
     return this.db.transaction(async (tx) => {
       const lapsed = await tx
@@ -67,7 +84,8 @@ export class OrderExpiryRepository {
         .groupBy(orders.id)
         .having(lt(max(seatHolds.expiresAt), deadline))
         .limit(input.limit);
-      if (lapsed.length === 0) return [];
+      if (lapsed.length === 0)
+        return { closed: [], lapsedOffers: 0, offered: [] };
 
       const ids = lapsed.map((order) => order.id);
       await tx
@@ -87,7 +105,34 @@ export class OrderExpiryRepository {
             eq(seatHolds.status, ACTIVE_HOLD),
           ),
         );
-      return lapsed;
+      // Last, so the seats the lapsed offers held are already free again when
+      // the next people in line are offered them — in this same transaction.
+      const offers = await this.lapsedOffers(tx, ids);
+      const offered =
+        offers.length > 0
+          ? await settleLapsedOffers(tx, offers, {
+              now: input.now,
+              ...input.waitlist,
+            })
+          : [];
+      return { closed: lapsed, lapsedOffers: offers.length, offered };
     });
+  }
+
+  /** Which of the closed orders were waitlist offers, and for which ticket. */
+  private lapsedOffers(tx: Tx, ids: string[]): Promise<LapsedOffer[]> {
+    return tx
+      .select({
+        orderId: orders.id,
+        organizationId: orders.organizationId,
+        reference: orders.reference,
+        eventId: orders.eventId,
+        buyerEmail: orders.buyerEmail,
+        buyerName: orders.buyerName,
+        ticketTypeId: orderItems.ticketTypeId,
+      })
+      .from(orders)
+      .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+      .where(and(inArray(orders.id, ids), isNotNull(orders.offerExpiresAt)));
   }
 }

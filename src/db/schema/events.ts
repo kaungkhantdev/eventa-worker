@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -57,6 +58,11 @@ export const organizations = pgTable('organizations', {
   name: text().notNull(),
   slug: text().notNull(),
   locale: localeEnum().notNull(),
+  /** The seller identity a receipt prints (US-SET-07); each may be unset. */
+  address: text(),
+  taxId: text(),
+  /** A fraction — 0.0700 is 7%. Arrives as a string; numeric is exact. */
+  vatRate: numeric({ precision: 5, scale: 4 }),
 });
 
 export const users = pgTable('users', {

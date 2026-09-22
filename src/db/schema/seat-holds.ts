@@ -12,9 +12,10 @@ import {
 // OWNS the schema and migrations; nothing here creates or alters a table. Keep
 // in sync with entities.md.
 //
-// The worker needs it for one thing: `expires_at` is the buyer's real deadline,
-// and the expiry sweep both reads it (to find what lapsed) and writes it (to
-// retire the dead holds alongside their order).
+// The worker needs it for two things. `expires_at` is the buyer's real
+// deadline, and the expiry sweep both reads it (to find what lapsed) and writes
+// it (to retire the dead holds alongside their order). And a lapsed waitlist
+// offer's seats are re-held for the next person in line in the same sweep.
 
 export const holdStatusEnum = pgEnum('hold_status', [
   'active',
@@ -27,7 +28,9 @@ export const holdStatusEnum = pgEnum('hold_status', [
 export const ACTIVE_HOLD = 'active' as const;
 
 export const seatHolds = pgTable('seat_holds', {
-  id: bigint({ mode: 'number' }).primaryKey(),
+  // Identity in eventa-api; declared so here because the sweep now INSERTS a
+  // hold when it passes a lapsed waitlist offer on (US-REG-04).
+  id: bigint({ mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
   organizationId: bigint({ mode: 'number' }).notNull(),
   eventId: uuid().notNull(),
   /** Null until a checkout converts the hold into an order. */

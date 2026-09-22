@@ -4,6 +4,8 @@ import { Clock } from '../../common/time/clock';
 import type { Env } from '../../config/env.validation';
 import { OrderExpiryRepository } from './order-expiry.repository';
 
+const MS_PER_HOUR = 60 * 60 * 1000;
+
 /**
  * Closes the orders nobody paid for (US-DISC-05).
  *
@@ -23,6 +25,8 @@ export class OrderExpiryService {
   private readonly logger = new Logger(OrderExpiryService.name);
   private readonly graceMs: number;
   private readonly batch: number;
+  private readonly offerMs: number;
+  private readonly publicWebUrl: string | null;
 
   constructor(
     private readonly repo: OrderExpiryRepository,
@@ -31,15 +35,30 @@ export class OrderExpiryService {
   ) {
     this.graceMs = config.get('ORDER_EXPIRY_GRACE_MS', { infer: true });
     this.batch = config.get('ORDER_EXPIRY_BATCH', { infer: true });
+    this.offerMs =
+      config.get('WAITLIST_OFFER_HOURS', { infer: true }) * MS_PER_HOUR;
+    this.publicWebUrl = config.get('PUBLIC_WEB_URL', { infer: true }) ?? null;
   }
 
   /** Close one batch of lapsed orders. Returns how many. */
   async sweep(): Promise<number> {
-    const closed = await this.repo.expireLapsed({
+    const { closed, lapsedOffers, offered } = await this.repo.expireLapsed({
       now: this.clock.now(),
       graceMs: this.graceMs,
       limit: this.batch,
+      waitlist: { offerMs: this.offerMs, publicWebUrl: this.publicWebUrl },
     });
+    if (offered.length > 0) {
+      this.logger.log({ references: offered }, 'passed waitlist offers on');
+    }
+    if (lapsedOffers > 0 && !this.publicWebUrl) {
+      // Loud, because the cost is quiet: the seats go back on general sale
+      // instead of to the people waiting for them.
+      this.logger.warn(
+        { lapsedOffers },
+        'PUBLIC_WEB_URL is not set — lapsed waitlist offers were not passed on',
+      );
+    }
     if (closed.length > 0) {
       // References, not ids: this is the number an organizer would be asked
       // about, and it is not a capability the way an order's uuid is.
