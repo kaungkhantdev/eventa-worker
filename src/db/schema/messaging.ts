@@ -23,6 +23,13 @@ export type MessageChannel = (typeof messageChannelEnum.enumValues)[number];
  * and change nothing.
  */
 export const REGISTRATION_CONFIRMATION_SLUG = 'registration-confirmation';
+/**
+ * The other half of an organizer's decision (US-REG-02): the sign-up they
+ * turned down. On until a workspace switches it off, like the confirmation —
+ * so it is deliberately NOT in {@link OFF_UNTIL_SWITCHED_ON_SLUGS}, which
+ * matches `defaultActive: true` on the API catalog's `rejection-notice`.
+ */
+export const REJECTION_NOTICE_SLUG = 'rejection-notice';
 export const CANCELLATION_NOTICE_SLUG = 'cancellation-notice';
 /** The itemized VAT receipt for a paid registration (US-SET-10). */
 export const PAYMENT_RECEIPT_SLUG = 'payment-receipt';
@@ -33,6 +40,15 @@ export const PAYMENT_RECEIPT_SLUG = 'payment-receipt';
  */
 export const WAITLIST_OFFER_SLUG = 'waitlist-offer';
 export const WAITLIST_OFFER_EXPIRED_KIND = 'waitlist-offer-expired';
+
+/**
+ * The invitation an organizer sends to a named person (US-REG-06). Unlike the
+ * messages above, nobody is ENTITLED to it — the API catalog marks it
+ * `expected: false` — so switching it off needs no warning. It is still the
+ * organizer's to switch off, which is why it is here: it is attendee-facing
+ * mail the workspace sends, not identity mail somebody is owed.
+ */
+export const EVENT_INVITATION_SLUG = 'event-invitation';
 
 /**
  * Kinds that appear in the delivery log but are not catalog templates: a
@@ -47,6 +63,14 @@ export const POST_EVENT_THANKYOU_SLUG = 'post-event-thankyou';
 /** Sent a day before an event starts, to cut no-shows (US-MSG-01). */
 export const EVENT_REMINDER_SLUG = 'event-reminder';
 export const REFUND_NOTICE_KIND = 'refund-notice';
+
+/**
+ * A session somebody has on their schedule moved — a new day, time or room
+ * (US-PROG-03). Sent only when the organizer chooses to announce the change;
+ * a REMOVED session deliberately tells nobody (US-PROG-04), so there is no
+ * second slug for that.
+ */
+export const SESSION_CHANGE_SLUG = 'session-change';
 
 /**
  * Messages that are OFF in a workspace until its organizer switches them on —

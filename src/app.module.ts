@@ -13,6 +13,8 @@ import { DatabaseModule } from './db/database.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
 import { EventsModule } from './modules/events/events.module';
+import { EventProgramModule } from './modules/event-program/event-program.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 import { ScheduledMessagesModule } from './modules/scheduled-messages/scheduled-messages.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
@@ -23,6 +25,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AuthPasswordModule } from './modules/auth-password/auth-password.module';
 import { AuthSignupModule } from './modules/auth-signup/auth-signup.module';
 import { AuthTwoFactorModule } from './modules/auth-two-factor/auth-two-factor.module';
+import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
+import { UsersModule } from './modules/users/users.module';
 import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
 
 @Module({
@@ -44,7 +48,11 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     AuthSignupModule,
     AuthPasswordModule,
     AuthTwoFactorModule,
+    AccountDeletionModule,
+    UsersModule,
     EventsModule,
+    EventProgramModule,
+    InvitationsModule,
     ScheduledMessagesModule,
     WaitlistModule,
     RegistrationModule,

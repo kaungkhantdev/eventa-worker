@@ -70,6 +70,23 @@ export class MetricsService {
     registers: [this.registry],
   });
 
+  /**
+   * A message that went out with a pre-send refinement lookup fallen back to
+   * its default — a security alert sent in English because the language could
+   * not be read, say.
+   *
+   * This is the whole of "be loud" for those sends. A refinement that fails may
+   * not withhold the message (`common/db/refinement-read.ts` says why), so a
+   * warn line is the only other trace, and a warn line nobody greps is not a
+   * signal. `refinement` is a small closed set, so the label stays bounded.
+   */
+  private readonly degradedSends = new Counter({
+    name: `${PREFIX}degraded_sends_total`,
+    help: 'Messages sent with a pre-send lookup degraded to its default',
+    labelNames: ['routing_key', 'refinement'] as const,
+    registers: [this.registry],
+  });
+
   constructor() {
     // Heap, event-loop lag, GC — the ordinary "is this process struggling"
     // signals, on the same registry so one scrape gets everything.
@@ -82,7 +99,10 @@ export class MetricsService {
   }
 
   /** `outcome`: `ok` handled, `retried` scheduled again, `parked` dead-lettered. */
-  recordHandled(routingKey: string, outcome: 'ok' | 'retried' | 'parked'): void {
+  recordHandled(
+    routingKey: string,
+    outcome: 'ok' | 'retried' | 'parked',
+  ): void {
     this.messagesHandled.inc({ routing_key: routingKey, outcome });
   }
 
@@ -92,6 +112,11 @@ export class MetricsService {
 
   recordEmail(outcome: 'sent' | 'failed'): void {
     this.emails.inc({ outcome });
+  }
+
+  /** See {@link degradedSends}. `refinement` names what fell back, not why. */
+  recordDegradedSend(routingKey: string, refinement: 'locale'): void {
+    this.degradedSends.inc({ routing_key: routingKey, refinement });
   }
 
   scrape(): Promise<string> {

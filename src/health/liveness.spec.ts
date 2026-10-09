@@ -12,7 +12,9 @@ import { DETACHED_GRACE_MS, livenessOf } from './liveness';
  */
 describe('livenessOf', () => {
   it('is alive while consuming', () => {
-    expect(livenessOf({ everConsumed: true, connected: true, downForMs: 0 })).toEqual({
+    expect(
+      livenessOf({ everConsumed: true, connected: true, downForMs: 0 }),
+    ).toEqual({
       status: 'ok',
       consuming: true,
     });
@@ -25,14 +27,16 @@ describe('livenessOf', () => {
    */
   it('is alive while still starting up', () => {
     expect(
-      livenessOf({ everConsumed: false, connected: false, downForMs: 0 }).status,
+      livenessOf({ everConsumed: false, connected: false, downForMs: 0 })
+        .status,
     ).toBe('ok');
   });
 
   it('rides out a brief drop without asking to be restarted', () => {
     // The broker bounced; backoff is already retrying at 1s, 2s, 4s…
     expect(
-      livenessOf({ everConsumed: true, connected: false, downForMs: 5_000 }).status,
+      livenessOf({ everConsumed: true, connected: false, downForMs: 5_000 })
+        .status,
     ).toBe('ok');
   });
 

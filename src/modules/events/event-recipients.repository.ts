@@ -9,10 +9,10 @@ import {
   users,
   type Locale,
 } from '../../db/schema';
+import { asLocale } from '../../common/messaging/locale';
 import { ATTENDEE_PERSONA, PLATFORM_ORG_SLUG } from '../../db/schema/events';
 
 /** When neither the event nor the workspace names a language. */
-const DEFAULT_LOCALE: Locale = 'en';
 
 /** One broadcast recipient — a confirmed attendee's contact. */
 export interface Recipient {
@@ -160,6 +160,10 @@ export class EventRecipientsRepository {
         and(eq(events.id, eventId), eq(events.organizationId, organizationId)),
       )
       .limit(1);
-    return row?.eventLocale ?? row?.orgLocale ?? DEFAULT_LOCALE;
+    // `asLocale`, not a bare `??`: the column is typed `Locale` but this
+    // service only MIRRORS eventa-api's enum, and Drizzle does not map enum
+    // values on the way in — so an upstream `ALTER TYPE` reaches the copy
+    // table as a key it does not have. See `common/messaging/locale.ts`.
+    return asLocale(row?.eventLocale ?? row?.orgLocale);
   }
 }
