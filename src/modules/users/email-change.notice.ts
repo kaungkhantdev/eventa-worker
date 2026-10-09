@@ -56,8 +56,12 @@ import type { Locale } from '../../db/schema/events';
  *   stranger whose address was mistyped, and whose account this is about is
  *   exactly what lets them recognise it as not theirs and ignore it (which is
  *   what the copy asks them to do). `safeDisplayName` decides what survives —
- *   shared, because all three identity notices face the same wire field, and
- *   two copies of one security filter would be two things to keep in step.
+ *   shared, because every identity notice faces the same wire field, and two
+ *   copies of one security filter would be two things to keep in step. It
+ *   accepts a name or nothing, so what reaches this greeting is name-shaped:
+ *   no digits for a phone to turn into `tel:`, and not enough words to hold a
+ *   sentence. The heads-up's bullet above is still the stronger answer, and
+ *   `safeDisplayName`'s own docstring records why it cannot reach that far.
  *
  * Neither SUBJECT interpolates anything. That is deliberate and worth keeping:
  * a newline in a subject is header injection rather than one ugly line.

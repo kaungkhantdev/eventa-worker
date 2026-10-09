@@ -1,4 +1,3 @@
-import { safeDisplayName } from '../../common/messaging/display-name';
 import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import type { Locale } from '../../db/schema/events';
 
@@ -53,8 +52,14 @@ import type { Locale } from '../../db/schema/events';
  * THE "NO LINK" CLAIM IS ENFORCED, NOT MERELY INTENDED. The reader's name is
  * the one piece of free text here, and the session that can set it is the one
  * this notice reports — so it goes through `safeDisplayName` before it is
- * greeted with, and the greeting drops it entirely rather than print something
- * link-shaped.
+ * greeted with, and the greeting drops it entirely rather than print anything
+ * that is not shaped like a name.
+ *
+ * "No link" is a claim about what the reader's CLIENT does with the text. A
+ * name of "Support +66 81 234 5678" holds no scheme, slash or dot and is still
+ * a tappable number in iOS Mail and Gmail on Android, which linkify a run of
+ * digits into `tel:` — so the rule is an allow-list of what a name may contain
+ * rather than a list of the link shapes anybody has thought of so far.
  */
 
 /**
@@ -170,7 +175,24 @@ export function passwordChangedBody(notice: PasswordChangedNotice): string {
   const locale = knownLocale(notice.locale);
   const t = COPY[locale];
   return [
-    t.greeting(safeDisplayName(notice.name)),
+    // Deliberately nameless, and this is the fix rather than an omission.
+    //
+    // The name is attacker-controlled through exactly the session this
+    // notice reports, and no shape rule can separate a name from a sentence
+    // in a script written without inter-word spaces. `safeDisplayName`'s
+    // word cap counts `name.split(' ')`, so a 48-code-point Thai imperative
+    // — `ด่วนบัญชีถูกแฮกโปรดโทรฝ่ายสนับสนุนทันทีเดี๋ยวนี้`, "URGENT your
+    // account was hacked, call support now" — is ONE word and passes every
+    // cap. In a Thai-market product that is the primary locale, so the
+    // defence failed exactly where it was needed most.
+    //
+    // Lengthening the rule cannot close it: any cap generous enough for
+    // `พลตำรวจเอก ประภัสสราภรณ์ ศรีวรรณวิทย์ไพศาล` (42) admits a sentence of
+    // 48. So the greeting drops the name instead, which removes the position
+    // where somebody else's words can wear Eventa's voice. The mail is
+    // addressed to one mailbox and nothing in the warning depended on the
+    // name — `display-name.ts` said as much before this needed it.
+    t.greeting(null),
     '',
     t.changed,
     ...whenLine(notice.occurredAt, locale, t),

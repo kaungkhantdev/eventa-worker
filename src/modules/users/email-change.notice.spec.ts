@@ -268,15 +268,20 @@ describe('a name an attacker supplied', () => {
 
   /**
    * Collapsing the newlines is only the floor: on one line, `Hi Somchai …
-   * https://evil.test/fix,` is still a destination most clients linkify. The
-   * greeting keeps the real name and loses every link-shaped run with it.
+   * https://evil.test/fix,` is still a destination most clients linkify.
+   *
+   * This test used to assert that the greeting KEPT `Somchai` and dropped the
+   * link-shaped runs around it — and that is the behaviour the fix removed, not
+   * a detail of it. Dropping the bad run and greeting with the remainder is
+   * what edited this very string into `Hi Somchai secure your account at,`: a
+   * sentence fragment the attacker chose, printed as somebody's name. A name is
+   * now accepted or declined whole, and a declined one falls back to the
+   * greeting this mail already had for a reader it cannot name.
    */
-  it('keeps the real name and drops the link-shaped rest', () => {
+  it('declines the whole name rather than greeting with the rest of it', () => {
     const greeting = injected.split('\n')[0];
 
-    expect(greeting).toContain('Somchai');
-    expect(greeting).not.toContain('://');
-    expect(greeting).not.toContain('evil.test');
+    expect(greeting).toBe('Hello,');
     expect(greeting).not.toMatch(NEWLINES);
   });
 
@@ -330,5 +335,36 @@ describe('a name an attacker supplied', () => {
         emailChangeConfirmationBody({ ...englishConfirmation, name }),
       ).toContain(name);
     }
+  });
+});
+
+/**
+ * The same attack with no URL punctuation in it. The confirmation already
+ * carries Eventa's own link, so the harm here is not a second one: it is the
+ * line `Hi Support +66 81 234 5678,` printed above it, a number a phone turns
+ * into `tel:` and a reader reads as the help desk. A name that is not
+ * name-shaped is declined whole — see `common/messaging/display-name.ts`.
+ */
+describe('a hostile name that carries no URL punctuation', () => {
+  const LURES = [
+    'Ignore this, it was me, your admin',
+    'Somchai call 0812345678 now',
+    'Support +66 81 234 5678',
+  ];
+
+  it.each(LURES)('greets without a name rather than print %p', (name) => {
+    const body = emailChangeConfirmationBody({ ...englishConfirmation, name });
+
+    expect(body.split('\n')[0]).toBe('Hello,');
+    expect(body).not.toContain(name);
+    expect(body.split('\n')[0]).not.toMatch(/\d/u);
+    expect(body).toContain(CONFIRM_URL);
+  });
+
+  it.each(LURES)('greets a Thai reader without one either, for %p', (name) => {
+    const body = emailChangeConfirmationBody({ ...thaiConfirmation, name });
+
+    expect(body.split('\n')[0]).toBe('สวัสดี');
+    expect(body).not.toContain(name);
   });
 });

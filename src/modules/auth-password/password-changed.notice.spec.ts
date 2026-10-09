@@ -28,11 +28,32 @@ describe('passwordChangedSubject', () => {
 });
 
 describe('passwordChangedBody', () => {
-  it('greets the account holder and says what happened', () => {
+  it('says what happened, without naming the reader', () => {
     const body = passwordChangedBody(english);
 
-    expect(body).toContain('Somchai');
     expect(body).toMatch(/password was changed/i);
+    expect(body).not.toContain('Somchai');
+  });
+
+  /*
+   * WHY THE GREETING CARRIES NO NAME, pinned so it is not "tidied" back.
+   *
+   * The name is attacker-controlled through exactly the session this notice
+   * reports, and no shape rule separates a name from a sentence in a script
+   * written without inter-word spaces: `safeDisplayName`'s word cap counts
+   * `name.split(' ')`, so the Thai string below is ONE word. It is a complete
+   * imperative — "URGENT your account was hacked, call support now" — at 48
+   * code points with no digits and no punctuation, and it cleared every cap.
+   * In a Thai-market product that is the primary locale.
+   *
+   * Any cap generous enough for a real Thai name admits it, so the position
+   * went instead of the rule.
+   */
+  it('cannot be made to carry somebody else’s sentence', () => {
+    const lure = 'ด่วนบัญชีถูกแฮกโปรดโทรฝ่ายสนับสนุนทันทีเดี๋ยวนี้';
+    const body = passwordChangedBody({ ...english, name: lure });
+
+    expect(body).not.toContain(lure);
   });
 
   /**
@@ -259,4 +280,60 @@ describe('a hostile name on the event', () => {
     expect(body.split('\n')[0]).toBe('Hi,');
     expect(body).toMatch(/password was changed/i);
   });
+});
+
+/**
+ * The lures that need no URL punctuation at all.
+ *
+ * The line count above is not the guarantee. `safeDisplayName` held the
+ * newline, so the body is still the same number of lines — and a greeting
+ * reading `Hi Support +66 81 234 5678,` is a TAPPABLE NUMBER on a phone,
+ * because iOS Mail and Gmail on Android linkify a run of digits into `tel:`
+ * without any scheme or dot to go on. `Hi Ignore this, it was me, your admin,`
+ * needs no link at all: it is the attacker answering the warning, in Eventa's
+ * voice, at the top of the mail that reports them.
+ *
+ * All three are reachable: the name is `UpdateProfileDto.name`, `@IsString()
+ * @MaxLength(200)` with no charset rule, written through precisely the session
+ * this notice reports.
+ */
+describe('a hostile name that carries no URL punctuation', () => {
+  const LURES = [
+    'Ignore this, it was me, your admin',
+    'Somchai call 0812345678 now',
+    'Support +66 81 234 5678',
+  ];
+
+  it.each(LURES)('greets without a name rather than print %p', (name) => {
+    const body = passwordChangedBody({ ...english, name });
+
+    expect(body.split('\n')[0]).toBe('Hi,');
+    expect(body).toMatch(/password was changed/i);
+  });
+
+  it.each(LURES)('keeps %p out of the mail entirely', (name) => {
+    expect(passwordChangedBody({ ...english, name })).not.toContain(name);
+    expect(passwordChangedSubject({ ...english, name })).not.toContain(name);
+  });
+
+  /**
+   * On the greeting line only: the body prints a timestamp and a sign-in count,
+   * and those digits are Eventa's own.
+   */
+  it.each(LURES)('leaves no digit a phone could dial, from %p', (name) => {
+    const greeting = passwordChangedBody({ ...english, name }).split('\n')[0];
+
+    expect(greeting).not.toMatch(/\d/u);
+  });
+
+  /** Thai copy interpolates the same name, so it gets the same guarantee. */
+  it.each(LURES)(
+    'greets a Thai reader without a name either, for %p',
+    (name) => {
+      const body = passwordChangedBody({ ...thai, name });
+
+      expect(body.split('\n')[0]).toBe('สวัสดี');
+      expect(body).not.toContain(name);
+    },
+  );
 });

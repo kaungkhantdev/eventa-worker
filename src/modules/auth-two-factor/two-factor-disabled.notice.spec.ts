@@ -26,11 +26,32 @@ describe('twoFactorDisabledSubject', () => {
 });
 
 describe('twoFactorDisabledBody', () => {
-  it('greets the account holder and says what happened', () => {
+  it('says what happened, without naming the reader', () => {
     const body = twoFactorDisabledBody(english);
 
-    expect(body).toContain('Somchai');
     expect(body).toMatch(/turned off/i);
+    expect(body).not.toContain('Somchai');
+  });
+
+  /*
+   * WHY THE GREETING CARRIES NO NAME, pinned so it is not "tidied" back.
+   *
+   * The name is attacker-controlled through exactly the session this notice
+   * reports, and no shape rule separates a name from a sentence in a script
+   * written without inter-word spaces: `safeDisplayName`'s word cap counts
+   * `name.split(' ')`, so the Thai string below is ONE word. It is a complete
+   * imperative — "URGENT your account was hacked, call support now" — at 48
+   * code points with no digits and no punctuation, and it cleared every cap.
+   * In a Thai-market product that is the primary locale.
+   *
+   * Any cap generous enough for a real Thai name admits it, so the position
+   * went instead of the rule.
+   */
+  it('cannot be made to carry somebody else’s sentence', () => {
+    const lure = 'ด่วนบัญชีถูกแฮกโปรดโทรฝ่ายสนับสนุนทันทีเดี๋ยวนี้';
+    const body = twoFactorDisabledBody({ ...english, name: lure });
+
+    expect(body).not.toContain(lure);
   });
 
   /**
@@ -149,5 +170,34 @@ describe('a hostile name on the event', () => {
 
     expect(body.split('\n')[0]).toBe('Hi,');
     expect(body).toMatch(/turned off/i);
+  });
+});
+
+/**
+ * The same attack with no URL punctuation in it. A digit run needs no scheme,
+ * slash or dot to become a `tel:` link on a phone, and a sentence needs no link
+ * at all to answer the warning in Eventa's voice — so a name that is not
+ * name-shaped is declined whole. See `common/messaging/display-name.ts`.
+ */
+describe('a hostile name that carries no URL punctuation', () => {
+  const LURES = [
+    'Ignore this, it was me, your admin',
+    'Somchai call 0812345678 now',
+    'Support +66 81 234 5678',
+  ];
+
+  it.each(LURES)('greets without a name rather than print %p', (name) => {
+    const body = twoFactorDisabledBody({ ...english, name });
+
+    expect(body.split('\n')[0]).toBe('Hi,');
+    expect(body).not.toContain(name);
+    expect(body.split('\n')[0]).not.toMatch(/\d/u);
+  });
+
+  it.each(LURES)('greets a Thai reader without one either, for %p', (name) => {
+    const body = twoFactorDisabledBody({ ...thai, name });
+
+    expect(body.split('\n')[0]).toBe('สวัสดี');
+    expect(body).not.toContain(name);
   });
 });

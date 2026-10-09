@@ -150,8 +150,8 @@ export class InvitationSentHandler extends ValidatedHandler<InvitationSentEvent>
       email: payload.recipientEmail,
     });
     // The name is free text an organizer typed into a form; `safeDisplayName`
-    // is what stops a newline and a host in it writing their own line into a
-    // mail Eventa signs. See common/messaging/display-name.ts.
+    // is what stops a newline, a host or a phone number in it writing their
+    // own line into a mail Eventa signs. See common/messaging/display-name.ts.
     const name = safeDisplayName(payload.recipientName);
     const fields = { first_name: name ?? '', event_name: event.eventName };
     const chosen = pickWording(

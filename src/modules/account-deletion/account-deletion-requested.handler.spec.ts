@@ -101,7 +101,11 @@ describe('AccountDeletionRequestedHandler', () => {
     expect(email.send).toHaveBeenCalledTimes(1);
     expect(sent[0].to).toBe('somchai@example.co.th');
     expect(sent[0].subject).toMatch(/deleted/i);
-    expect(sent[0].text).toContain('Somchai');
+    // Addressed by mailbox, not by name: the greeting carries no name, because
+    // a name is attacker-controlled through the session this notice reports
+    // and no shape rule separates one from a sentence in Thai. See
+    // `account-deletion-notice.ts`.
+    expect(sent[0].text).not.toContain('Somchai');
   });
 
   /**

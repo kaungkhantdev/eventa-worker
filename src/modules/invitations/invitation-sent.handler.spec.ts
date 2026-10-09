@@ -241,7 +241,24 @@ describe('InvitationSentHandler (US-REG-06)', () => {
     );
 
     expect(sent[0].text).not.toContain('evil.test');
-    expect(sent[0].text).toContain('Hi Anan Register instead at');
+    expect(sent[0].text).not.toContain('Register instead at');
+    expect(sent[0].text.split('\n')[0]).toBe('Hello,');
+  });
+
+  /**
+   * The same field with no URL punctuation in it at all. A digit run is a
+   * `tel:` link on a phone, and an organizer who types one into the name box
+   * gets a tappable number in a mail Eventa signs — so the name is declined
+   * and the invitation keeps Eventa's own no-name greeting.
+   */
+  it('lets a name that is a phone number through as no name at all', async () => {
+    await handler.handle(
+      { ...PAYLOAD, recipientName: 'Support call 0812345678 now' },
+      ctx,
+    );
+
+    expect(sent[0].text).not.toContain('0812345678');
+    expect(sent[0].text.split('\n')[0]).toBe('Hello,');
   });
 
   it('reads tolerantly: an unknown field and a missing note are both fine', async () => {
