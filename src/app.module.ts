@@ -23,6 +23,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { RegistrationModule } from './modules/registration/registration.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthPasswordModule } from './modules/auth-password/auth-password.module';
+import { AccessModule } from './modules/access/access.module';
 import { AuthSignupModule } from './modules/auth-signup/auth-signup.module';
 import { AuthTwoFactorModule } from './modules/auth-two-factor/auth-two-factor.module';
 import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
@@ -45,6 +46,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     MessagingModule,
     RabbitmqModule,
     AuthModule,
+    AccessModule,
     AuthSignupModule,
     AuthPasswordModule,
     AuthTwoFactorModule,
