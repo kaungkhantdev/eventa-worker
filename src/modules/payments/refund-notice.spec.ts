@@ -1,8 +1,10 @@
 import {
   type RefundNotice,
   buyerBody,
+  buyerSubject,
   describeReason,
   organizerBody,
+  organizerSubject,
 } from './refund-notice';
 
 /**
@@ -95,5 +97,30 @@ describe('the refund notice’s reason (US-FIN-02)', () => {
   it('writes the organizer’s alert in English, whatever the event’s language', () => {
     const body = organizerBody(notice({ locale: 'th', reason: 'soldout' }));
     expect(reasonLine(body, 'Reason:')).toMatch(/sold out/);
+  });
+});
+
+/**
+ * `CreateEventDto.name` is `@MinLength(3) @MaxLength(120)` in eventa-api — no
+ * charset rule — so an event name reaches both of these subjects able to start
+ * a second header line.
+ */
+describe('free text that would add a line of its own', () => {
+  const LINE_BREAK = String.fromCodePoint(0x0a);
+  const EVENT_THAT_ADDS_A_LINE =
+    'Tech Week' + LINE_BREAK + 'Bcc: attacker@evil.test';
+
+  it('never breaks the buyer’s subject', () => {
+    expect(
+      buyerSubject(notice({ eventName: EVENT_THAT_ADDS_A_LINE })),
+    ).not.toContain(LINE_BREAK);
+  });
+
+  it('never breaks the organizer’s subject', () => {
+    expect(
+      organizerSubject(
+        notice({ reference: 'ORD-1' + LINE_BREAK + 'Bcc: a@evil.test' }),
+      ),
+    ).not.toContain(LINE_BREAK);
   });
 });

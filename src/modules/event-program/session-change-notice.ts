@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 
 /**
@@ -34,7 +36,6 @@ export interface SessionChangeNotice {
 /** One language's strings. Declared so EN and TH must stay the same shape. */
 interface Copy {
   subject: (session: string) => string;
-  greeting: (name: string) => string;
   rescheduled: (event: string) => string;
   movedRoom: (event: string) => string;
   session: string;
@@ -48,7 +49,6 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     subject: (session) => `Session moved: ${session}`,
-    greeting: (name) => `Hi ${name},`,
     rescheduled: (event) =>
       `A session on the programme for ${event} has been rescheduled.`,
     movedRoom: (event) =>
@@ -62,7 +62,6 @@ const COPY: Record<Locale, Copy> = {
   },
   th: {
     subject: (session) => `เปลี่ยนกำหนดการ: ${session}`,
-    greeting: (name) => `สวัสดีคุณ ${name}`,
     rescheduled: (event) =>
       `มีการเปลี่ยนวันหรือเวลาของเซสชันหนึ่งในกำหนดการงาน ${event}`,
     movedRoom: (event) =>
@@ -80,13 +79,13 @@ const COPY: Record<Locale, Copy> = {
 const TO = ' → ';
 
 export function sessionChangeSubject(notice: SessionChangeNotice): string {
-  return COPY[notice.locale].subject(notice.sessionTitle);
+  return inlineText(COPY[notice.locale].subject(notice.sessionTitle));
 }
 
 export function sessionChangeBody(notice: SessionChangeNotice): string {
   const t = COPY[notice.locale];
   return [
-    t.greeting(notice.attendeeName),
+    greeting(notice.locale, notice.attendeeName),
     '',
     notice.when
       ? t.rescheduled(notice.eventName)

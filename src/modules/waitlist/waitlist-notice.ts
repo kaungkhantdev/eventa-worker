@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 import { formatMoney, formatWhen } from '../registration/confirmation-email';
 
@@ -43,7 +45,6 @@ export interface OfferState {
 
 interface Copy {
   offerSubject: (event: string) => string;
-  greeting: (name: string) => string;
   opened: (event: string) => string;
   payBy: string;
   payHere: string;
@@ -56,7 +57,6 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     offerSubject: (event) => `A seat is waiting for you at ${event}`,
-    greeting: (name) => `Hi ${name},`,
     opened: (event) =>
       `Good news — a place has opened up at ${event}, and we're holding it for you.`,
     payBy: 'Pay by',
@@ -71,7 +71,6 @@ const COPY: Record<Locale, Copy> = {
   },
   th: {
     offerSubject: (event) => `มีที่นั่งรอคุณอยู่ที่ ${event}`,
-    greeting: (name) => `สวัสดีคุณ ${name}`,
     opened: (event) =>
       `ข่าวดี มีที่ว่างสำหรับ ${event} และเราเก็บไว้ให้คุณแล้ว`,
     payBy: 'ชำระเงินภายใน',
@@ -87,14 +86,16 @@ const COPY: Record<Locale, Copy> = {
 };
 
 export function offerSubject(notice: OfferNotice): string {
-  return notice.subject || COPY[notice.locale].offerSubject(notice.eventName);
+  return inlineText(
+    notice.subject || COPY[notice.locale].offerSubject(notice.eventName),
+  );
 }
 
 export function offerBody(notice: OfferNotice): string {
   const t = COPY[notice.locale];
   const opening = notice.opening
     ? [notice.opening]
-    : [t.greeting(notice.name), '', t.opened(notice.eventName)];
+    : [greeting(notice.locale, notice.name), '', t.opened(notice.eventName)];
   const price = formatMoney(notice.totalSatang, notice.currency, notice.locale);
   return [
     ...opening,
@@ -110,13 +111,13 @@ export function offerBody(notice: OfferNotice): string {
 }
 
 export function expiredSubject(notice: ExpiredNotice): string {
-  return COPY[notice.locale].expiredSubject(notice.eventName);
+  return inlineText(COPY[notice.locale].expiredSubject(notice.eventName));
 }
 
 export function expiredBody(notice: ExpiredNotice): string {
   const t = COPY[notice.locale];
   return [
-    t.greeting(notice.name),
+    greeting(notice.locale, notice.name),
     '',
     t.expired(notice.eventName),
     '',

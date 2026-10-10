@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
-import { safeDisplayName } from '../../common/messaging/display-name';
-import { fill, pickWording } from '../../common/messaging/merge-fields';
+import {
+  type ChosenWording,
+  pickWording,
+} from '../../common/messaging/merge-fields';
 import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
+import type { Locale } from '../../db/schema/events';
 import { EVENT_INVITATION_SLUG } from '../../db/schema/messaging';
 import {
   type MessageContext,
@@ -17,6 +20,8 @@ import {
   invitationBody,
   invitationSubject,
 } from './invitation-email';
+import { invitationGreetingName } from './invitation-name';
+import { personalisedWording } from './invitation-wording';
 import {
   INVITATION_SENT,
   type InvitationSentEvent,
@@ -67,6 +72,11 @@ type Outcome = (typeof OUTCOME)[keyof typeof OUTCOME];
  * - **The event is re-read before sending.** The outbox and the queue can run
  *   behind, and an invitation to an event that has since been cancelled or
  *   deleted is worse than no invitation. Nothing sent is still a success.
+ * - **The name is the organizer's claim, not the reader's own.** Every other
+ *   greeting in this service prints a name its own reader wrote; this one
+ *   prints what an organizer typed about a stranger, and mails it to an
+ *   address of the organizer's choosing. `invitation-name.ts` is the rule that
+ *   follows from that, and the honest account of what it does not reach.
  * - **Nothing about the recipient reaches a log line.** The address and the
  *   name are PII, and the register link is what gets somebody a place. The log
  *   carries the event id and the outcome; that is enough to follow a message
@@ -149,18 +159,15 @@ export class InvitationSentHandler extends ValidatedHandler<InvitationSentEvent>
       eventId: payload.eventId,
       email: payload.recipientEmail,
     });
-    // The name is free text an organizer typed into a form; `safeDisplayName`
-    // is what stops a newline, a host or a phone number in it writing their
-    // own line into a mail Eventa signs. See common/messaging/display-name.ts.
-    const name = safeDisplayName(payload.recipientName);
-    const fields = { first_name: name ?? '', event_name: event.eventName };
-    const chosen = pickWording(
-      await this.templates.wordingFor(
-        event.organizationId,
-        EVENT_INVITATION_SLUG,
-      ),
-      locale,
-    );
+    // The name is free text an organizer typed into a form about somebody
+    // else. `invitationGreetingName` is what stops a newline, a host, a phone
+    // number or a Thai sentence in it writing their own line into a mail
+    // Eventa signs — and its docstring records what it cannot stop.
+    const name = invitationGreetingName(payload.recipientName);
+    const wording = personalisedWording(await this.wording(event, locale), {
+      name,
+      eventName: event.eventName,
+    });
     return {
       locale,
       name,
@@ -168,8 +175,22 @@ export class InvitationSentHandler extends ValidatedHandler<InvitationSentEvent>
       whenText: formatWhen(event.startAt, event.timezone, locale),
       registerUrl: payload.registerUrl,
       note: payload.message ?? null,
-      subject: chosen.subject && fill(chosen.subject, fields),
-      opening: chosen.body && fill(chosen.body, fields),
+      subject: wording.subject,
+      opening: wording.body,
     };
+  }
+
+  /** The organizer's own subject and opening, in this reader's language. */
+  private async wording(
+    event: InvitationEvent,
+    locale: Locale,
+  ): Promise<ChosenWording> {
+    return pickWording(
+      await this.templates.wordingFor(
+        event.organizationId,
+        EVENT_INVITATION_SLUG,
+      ),
+      locale,
+    );
   }
 }

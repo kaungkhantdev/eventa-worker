@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
+import { safeDisplayName } from '../../common/messaging/display-name';
+import { greeting } from '../../common/messaging/greeting';
 import {
   type MessageContext,
   ValidatedHandler,
@@ -57,7 +59,14 @@ export class PasswordResetHandler extends ValidatedHandler<PasswordResetRequeste
     resetUrl,
   }: PasswordResetRequestedEvent): string {
     return [
-      `Hi ${name},`,
+      // The account's own name, which is free text whoever holds a session can
+      // set — so it goes through the SECURITY rule (`safeDisplayName`, an
+      // allow-list that declines anything not shaped like a name) and not the
+      // sanitising one the attendee notices use. `greeting` turns a declined
+      // name into `Hi,`; see `common/messaging/inline-text.ts` for why these
+      // two mails want the stricter of the two rules. The locale is fixed
+      // because this copy is English only.
+      greeting('en', safeDisplayName(name) ?? ''),
       '',
       `We received a request to reset your Eventa password${forWorkspace(workspaceName)}. Set a new one here:`,
       resetUrl,

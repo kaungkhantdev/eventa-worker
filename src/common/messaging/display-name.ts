@@ -1,5 +1,25 @@
+import { inlineText } from './inline-text';
+
 /**
- * A person's name, made safe to interpolate into a plain-text message.
+ * A person's name, made safe to interpolate into a SECURITY notice — the
+ * stricter of this module's two rules for a name.
+ *
+ * WHICH RULE DOES MY NOTICE WANT? This one only if the message is a warning
+ * about somebody's account, because only there is the name attacker-controlled
+ * by definition and only there does the copy make a claim ("this mail contains
+ * no links") that a plausible sentence in the greeting can borrow. It is an
+ * allow-list and it says NO: `Somchai 2`, `Acme Co., Ltd.` and a six-word
+ * patronymic chain are all declined, and the caller greets nobody.
+ *
+ * Everything else — a receipt, a ticket confirmation, a reminder, a
+ * cancellation — wants `inlineText` from `inline-text.ts`, which keeps the
+ * name and only flattens it. Greeting `Hi,` on a ticket because somebody's
+ * name has a digit in it is a worse product than the self-targeted lure it
+ * would be avoiding; `inline-text.ts` carries that argument in full, and
+ * `greeting.ts` is where an attendee notice gets its greeting from.
+ *
+ * Both rules begin with the same flattening step, and there is one copy of it:
+ * {@link inlineText}.
  *
  * WHY THIS EXISTS. `payload.name` reaches the identity notices straight off the
  * wire, and it is the one attacker-controlled string in mail that warns people
@@ -88,12 +108,6 @@ const NAME_WORD = /^\p{L}(?:[\p{L}\p{M}'’·-]*[\p{L}\p{M}])?$/u;
  */
 const INITIAL = /^\p{L}{1,4}\.$/u;
 
-/** Control and format characters — line breaks, zero-widths, bidi overrides. */
-const CONTROL_AND_FORMAT = /[\p{Cc}\p{Cf}]/gu;
-
-/** Every whitespace class, not just `\r` and `\n`; U+2028 breaks lines too. */
-const WHITESPACE_RUN = /\s+/gu;
-
 /**
  * How long a name a greeting prints, in code points.
  *
@@ -132,16 +146,12 @@ export const MAX_DISPLAY_NAME_WORDS = 5;
  * by not naming its reader, and nothing about the warning depends on it.
  */
 export function safeDisplayName(raw: string): string | null {
-  const name = collapsed(raw);
+  // The flattening step is shared rather than repeated: it used to live here
+  // as a private `collapsed()`, which is how eleven attendee notices came to
+  // interpolate names raw — the only door this module exported was one that
+  // could decline a name, and nothing offered to merely make one safe.
+  const name = inlineText(raw);
   return isNameShaped(name) ? name : null;
-}
-
-/** One line, single-spaced, with nothing invisible left in it. */
-function collapsed(raw: string): string {
-  return raw
-    .replace(CONTROL_AND_FORMAT, ' ')
-    .replace(WHITESPACE_RUN, ' ')
-    .trim();
 }
 
 /** A name's worth of words, each of them name-shaped, and nothing longer. */

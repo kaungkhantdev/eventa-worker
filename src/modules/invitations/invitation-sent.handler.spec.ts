@@ -261,6 +261,67 @@ describe('InvitationSentHandler (US-REG-06)', () => {
     expect(sent[0].text.split('\n')[0]).toBe('Hello,');
   });
 
+  /**
+   * The hole the word cap could not see. `safeDisplayName` bounds prose with
+   * `name.split(' ')`, and Thai puts no space between words — so a complete
+   * imperative is ONE word, carries no digit and no URL punctuation, and
+   * clears every shared cap. In the primary locale of a Thai-market product.
+   */
+  it('lets a Thai sentence in the name box greet nobody', async () => {
+    const lure = 'ด่วนบัญชีถูกแฮกโปรดโทรฝ่ายสนับสนุนทันทีเดี๋ยวนี้';
+    recipients.attendeeLocales.mockResolvedValue(new Map([[RECIPIENT, 'th']]));
+
+    await handler.handle({ ...PAYLOAD, recipientName: lure }, ctx);
+
+    expect(sent[0].text).not.toContain(lure);
+    expect(sent[0].text.split('\n')[0]).toBe('สวัสดี');
+  });
+
+  /**
+   * The collateral. A declined name used to reach `fill` as the empty string,
+   * so an organizer's own template rendered the hole where a name belonged —
+   * `Hi , you are invited` in the body, `, you're invited` in the subject.
+   * `merge-fields.ts` documents empty-for-missing on purpose, so the decision
+   * belongs here: wording that asked for a name we do not have falls back to
+   * Eventa's own copy, which has a nameless form.
+   */
+  it('never renders the hole where a declined name belonged', async () => {
+    templates.wordingFor.mockResolvedValue({
+      ...NO_WORDING,
+      bodyEn: 'Hi {{first_name}}, you are invited to {{event_name}}.',
+      subjectEn: '{{first_name}}, you’re invited',
+    });
+
+    await handler.handle(
+      { ...PAYLOAD, recipientName: 'Support call 0812345678 now' },
+      ctx,
+    );
+
+    expect(sent[0].text).not.toContain('Hi ,');
+    expect(sent[0].subject).not.toMatch(/^,/);
+    expect(sent[0].subject).toBe("You're invited to Bangkok Tech Week");
+    expect(sent[0].text.split('\n')[0]).toBe('Hello,');
+  });
+
+  /** A template that never asked for the name is unaffected by not having one. */
+  it('keeps an organizer’s wording that does not ask for a name', async () => {
+    templates.wordingFor.mockResolvedValue({
+      ...NO_WORDING,
+      bodyEn: 'Please join us at {{event_name}}.',
+      subjectEn: 'An invitation to {{event_name}}',
+    });
+
+    await handler.handle(
+      { ...PAYLOAD, recipientName: 'Support call 0812345678 now' },
+      ctx,
+    );
+
+    expect(sent[0].subject).toBe('An invitation to Bangkok Tech Week');
+    expect(
+      sent[0].text.startsWith('Please join us at Bangkok Tech Week.'),
+    ).toBe(true);
+  });
+
   it('reads tolerantly: an unknown field and a missing note are both fine', async () => {
     const withoutNote: Record<string, unknown> = {
       ...PAYLOAD,

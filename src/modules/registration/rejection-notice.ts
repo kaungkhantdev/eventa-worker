@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 import { formatMoney } from './confirmation-email';
 
@@ -99,7 +101,6 @@ export function moneyOf(payment: RejectionPayment): RejectionMoney {
 /** One language's strings. Declared so EN and TH must stay the same shape. */
 interface Copy {
   subject: (event: string) => string;
-  greeting: (name: string) => string;
   rejected: (event: string) => string;
   reference: string;
   refunded: (amount: string) => string;
@@ -111,7 +112,6 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     subject: (event) => `Your registration for ${event} was not approved`,
-    greeting: (name) => `Hi ${name},`,
     rejected: (event) =>
       `We're sorry to let you know that your registration for "${event}" was not approved by the organizer, so your place has not been confirmed.`,
     reference: 'Booking reference',
@@ -125,7 +125,6 @@ const COPY: Record<Locale, Copy> = {
   },
   th: {
     subject: (event) => `การลงทะเบียนของคุณสำหรับ ${event} ไม่ได้รับการอนุมัติ`,
-    greeting: (name) => `สวัสดีคุณ ${name}`,
     rejected: (event) =>
       `ขออภัยที่ต้องแจ้งว่าการลงทะเบียนของคุณสำหรับ "${event}" ไม่ได้รับการอนุมัติจากผู้จัดงาน ที่นั่งของคุณจึงไม่ได้รับการยืนยัน`,
     reference: 'รหัสการจอง',
@@ -140,7 +139,9 @@ const COPY: Record<Locale, Copy> = {
 };
 
 export function rejectionSubject(notice: RejectionNotice): string {
-  return notice.subject || COPY[notice.locale].subject(notice.eventName);
+  return inlineText(
+    notice.subject || COPY[notice.locale].subject(notice.eventName),
+  );
 }
 
 /**
@@ -155,7 +156,11 @@ export function rejectionBody(notice: RejectionNotice): string {
   return [
     ...(notice.opening
       ? [notice.opening]
-      : [t.greeting(notice.attendeeName), '', t.rejected(notice.eventName)]),
+      : [
+          greeting(notice.locale, notice.attendeeName),
+          '',
+          t.rejected(notice.eventName),
+        ]),
     '',
     `${t.reference}: ${notice.reference}`,
     ...moneyLines(notice, t),

@@ -568,4 +568,54 @@ describe('RegistrationConfirmedHandler (US-MSG-01)', () => {
       expect(logged).not.toContain('021234567');
     });
   });
+
+  /**
+   * The confirmation is the message with the most free text in it: a greeting,
+   * a holder line per ticket, and an organizer's own subject template. All
+   * three take a name off the wire, and `BuyerDto.name` is `@IsString()
+   * @IsNotEmpty() @MaxLength(120)` in eventa-api — no charset rule, no newline
+   * rule.
+   */
+  describe('a name that would add a line of its own', () => {
+    const LINE_BREAK = String.fromCodePoint(0x0a);
+    const LURE = 'Subject: Your Eventa account is locked, call 0812345678';
+    const NAME_THAT_ADDS_A_LINE = 'Somchai' + LINE_BREAK + LURE;
+
+    it('greets on one line, and still greets by name', async () => {
+      await handle({ buyerName: NAME_THAT_ADDS_A_LINE });
+      const [first] = email.send.mock.calls[0][0].text.split(LINE_BREAK);
+      // Sanitised, not declined: a ticket confirmation greeting `Hi,` is a
+      // worse product than the self-targeted lure it would be avoiding.
+      expect(first).toBe('Hi Somchai ' + LURE + ',');
+    });
+
+    it('keeps a ticket’s holder line to one line', async () => {
+      repo.loadConfirmation.mockResolvedValue(
+        source({
+          tickets: [
+            { holderName: NAME_THAT_ADDS_A_LINE, ticketLabel: 'General' },
+          ],
+        }),
+      );
+      const lines = email.send.mock.calls.length;
+      await handle();
+      const { text } = email.send.mock.calls[lines][0];
+      expect(text).toContain('General — Somchai ' + LURE);
+    });
+
+    it('never breaks the subject the organizer templated it into', async () => {
+      // `{{first_name}}` in a subject is where a newline stops being one ugly
+      // line and starts being a second header.
+      templates.wordingFor.mockResolvedValue({
+        subjectEn: '{{first_name}}, you are going',
+        bodyEn: null,
+        subjectTh: null,
+        bodyTh: null,
+      });
+      await handle({ buyerName: NAME_THAT_ADDS_A_LINE });
+      const { subject } = email.send.mock.calls[0][0];
+      expect(subject).not.toContain(LINE_BREAK);
+      expect(subject).toBe('Somchai ' + LURE + ', you are going');
+    });
+  });
 });

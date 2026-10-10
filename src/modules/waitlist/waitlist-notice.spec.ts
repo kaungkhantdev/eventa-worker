@@ -123,3 +123,33 @@ describe('waitlist notices (US-REG-04)', () => {
     });
   });
 });
+
+/**
+ * A buyer's own name with a line break in it. eventa-api's `BuyerDto.name` is
+ * `@IsString() @IsNotEmpty() @MaxLength(120)` — no charset rule and no newline
+ * rule — so this is a name the API accepts and the bus delivers.
+ *
+ * Built rather than written as an escape so the assertion below cannot pass by
+ * the source having been normalised.
+ */
+const LINE_BREAK = String.fromCodePoint(0x0a);
+const NAME_THAT_ADDS_A_LINE =
+  'Somchai' + LINE_BREAK + 'Subject: Your Eventa account is locked';
+
+describe('free text that would add a line of its own', () => {
+  it('adds no line to the body', () => {
+    const benign = offerBody(offer({ name: 'Somchai' })).split(
+      LINE_BREAK,
+    ).length;
+    const hostile = offerBody(offer({ name: NAME_THAT_ADDS_A_LINE })).split(
+      LINE_BREAK,
+    ).length;
+    expect(hostile).toBe(benign);
+  });
+
+  it('never breaks the subject, where a second line is a header', () => {
+    expect(
+      offerSubject(offer({ subject: NAME_THAT_ADDS_A_LINE })),
+    ).not.toContain(LINE_BREAK);
+  });
+});

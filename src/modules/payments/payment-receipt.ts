@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 import { formatMoney } from '../registration/confirmation-email';
 
@@ -58,7 +60,6 @@ export interface PaymentReceipt {
 
 interface Copy {
   subject: (event: string) => string;
-  greeting: (name: string) => string;
   thanks: (event: string) => string;
   number: string;
   paidOn: string;
@@ -78,7 +79,6 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     subject: (event) => `Your receipt for ${event}`,
-    greeting: (name) => `Hi ${name},`,
     thanks: (event) =>
       `Thank you for your payment. Here is your receipt for ${event}.`,
     number: 'Receipt no.',
@@ -97,7 +97,6 @@ const COPY: Record<Locale, Copy> = {
   },
   th: {
     subject: (event) => `ใบเสร็จรับเงิน: ${event}`,
-    greeting: (name) => `สวัสดีคุณ ${name}`,
     thanks: (event) =>
       `ขอบคุณสำหรับการชำระเงิน นี่คือใบเสร็จรับเงินสำหรับ ${event}`,
     number: 'เลขที่ใบเสร็จ',
@@ -131,21 +130,27 @@ export function serviceFeeOf(order: {
 }
 
 export function receiptSubject(receipt: PaymentReceipt): string {
-  return receipt.subject || COPY[receipt.locale].subject(receipt.eventName);
+  return inlineText(
+    receipt.subject || COPY[receipt.locale].subject(receipt.eventName),
+  );
 }
 
 export function receiptBody(receipt: PaymentReceipt): string {
   const t = COPY[receipt.locale];
   const opening = receipt.opening
     ? [receipt.opening]
-    : [t.greeting(receipt.buyerName), '', t.thanks(receipt.eventName)];
+    : [
+        greeting(receipt.locale, receipt.buyerName),
+        '',
+        t.thanks(receipt.eventName),
+      ];
   return [
     ...opening,
     '',
     `${t.number}: ${receipt.number}`,
     `${t.paidOn}: ${formatPaidOn(receipt.paidAt, receipt.locale)}`,
     `${t.method}: ${t.methods[receipt.method] ?? receipt.method}`,
-    `${t.billedTo}: ${receipt.buyerName}`,
+    `${t.billedTo}: ${inlineText(receipt.buyerName)}`,
     '',
     ...sellerLines(receipt.seller, t),
     '',
@@ -157,15 +162,18 @@ export function receiptBody(receipt: PaymentReceipt): string {
 
 function sellerLines(seller: ReceiptSeller, t: Copy): string[] {
   return [
-    `${t.issuedBy}: ${seller.name}`,
+    `${t.issuedBy}: ${inlineText(seller.name)}`,
+    // The address is NOT flattened: a postal address is legitimately several
+    // lines, and flattening it would mangle every honest one. The name and
+    // the tax id are single values and stay on their line.
     ...(seller.address ? [seller.address] : []),
-    ...(seller.taxId ? [`${t.taxId}: ${seller.taxId}`] : []),
+    ...(seller.taxId ? [`${t.taxId}: ${inlineText(seller.taxId)}`] : []),
   ];
 }
 
 function lineText(line: ReceiptLine, receipt: PaymentReceipt): string {
   const money = (satang: number) => moneyOf(satang, receipt);
-  return `${line.name} × ${line.quantity} @ ${money(line.unitSatang)}: ${money(line.lineSatang)}`;
+  return `${inlineText(line.name)} × ${line.quantity} @ ${money(line.unitSatang)}: ${money(line.lineSatang)}`;
 }
 
 /** A discount or fee of nothing is left out: "Discount: ฿0.00" reads as a failure. */

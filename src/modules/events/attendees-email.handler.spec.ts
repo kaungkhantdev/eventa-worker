@@ -136,4 +136,29 @@ describe('AttendeesEmailHandler', () => {
     ).rejects.toBeDefined();
     expect(email.send).not.toHaveBeenCalled();
   });
+
+  /**
+   * The organizer types this subject themselves, and it reaches here raw off
+   * the bus — the send-now broadcast and the scheduled announcement converge on
+   * this handler, so this is the one place either can be made safe. A newline
+   * in a subject is a second header line whoever typed it, which is why this is
+   * guarded here rather than argued about per author.
+   */
+  it('never sends a subject that runs to a second line', async () => {
+    const LINE_BREAK = String.fromCodePoint(0x0a);
+    recipients.confirmedRecipients.mockResolvedValue([
+      { email: 'anan@x.test', name: 'Anan' },
+    ] satisfies Recipient[]);
+
+    await handler.handle(
+      {
+        ...rawEvent,
+        subject: 'Doors open at 9am' + LINE_BREAK + 'Bcc: attacker@evil.test',
+      },
+      ctx,
+    );
+
+    expect(sent[0].subject).not.toContain(LINE_BREAK);
+    expect(sent[0].subject).toBe('Doors open at 9am Bcc: attacker@evil.test');
+  });
 });

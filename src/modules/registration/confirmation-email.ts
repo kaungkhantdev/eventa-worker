@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 
 /** Satang per baht — money crosses the bus as an integer and is formatted here. */
@@ -36,7 +38,6 @@ export interface ConfirmationDetails {
 /** One language's strings. Declared so EN and TH must stay the same shape. */
 interface Copy {
   subject: (event: string) => string;
-  greeting: (name: string) => string;
   confirmed: (event: string) => string;
   reference: string;
   when: string;
@@ -53,7 +54,6 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     subject: (event: string) => `You're going to ${event}`,
-    greeting: (name: string) => `Hi ${name},`,
     confirmed: (event: string) =>
       `Your registration for ${event} is confirmed.`,
     reference: 'Booking reference',
@@ -70,7 +70,6 @@ const COPY: Record<Locale, Copy> = {
   },
   th: {
     subject: (event: string) => `คุณกำลังจะไป ${event}`,
-    greeting: (name: string) => `สวัสดีคุณ ${name}`,
     confirmed: (event: string) =>
       `การลงทะเบียนของคุณสำหรับ ${event} ได้รับการยืนยันแล้ว`,
     reference: 'รหัสการจอง',
@@ -124,7 +123,9 @@ export function confirmationSubject(
   details: ConfirmationDetails,
   override?: string | null,
 ): string {
-  return override || COPY[details.locale].subject(details.eventName);
+  return inlineText(
+    override || COPY[details.locale].subject(details.eventName),
+  );
 }
 
 /**
@@ -149,7 +150,11 @@ export function confirmationBody(
     // make.
     ...(intro
       ? [intro]
-      : [t.greeting(details.buyerName), '', t.confirmed(details.eventName)]),
+      : [
+          greeting(details.locale, details.buyerName),
+          '',
+          t.confirmed(details.eventName),
+        ]),
     '',
     `${t.reference}: ${details.reference}`,
     `${t.when}: ${details.whenText}`,
@@ -181,7 +186,12 @@ function ticketLines(
   details: ConfirmationDetails,
   t: Copy,
 ): string[] {
-  const label = ticket.ticketLabel ?? details.eventName;
-  const holder = ticket.holderName ?? details.buyerName;
+  // The only name in this service printed outside a greeting, so the one place
+  // that still has to ask for the rule by hand. `holderName` is the buyer's own
+  // name too — eventa-api writes it from `order.buyerName` at issue — but the
+  // line is a ticket's holder, not a salutation, so it has no nameless form to
+  // fall back to and prints whatever survives.
+  const label = inlineText(ticket.ticketLabel ?? details.eventName);
+  const holder = inlineText(ticket.holderName ?? details.buyerName);
   return [`  ${t.ticketLine(label, holder)}`];
 }

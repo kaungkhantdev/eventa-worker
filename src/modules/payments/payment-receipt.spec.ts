@@ -188,3 +188,110 @@ describe('payment receipt (US-SET-10, US-MSG-01)', () => {
     });
   });
 });
+
+/**
+ * A buyer's own name with a line break in it. eventa-api's `BuyerDto.name` is
+ * `@IsString() @IsNotEmpty() @MaxLength(120)` — no charset rule and no newline
+ * rule — so this is a name the API accepts and the bus delivers.
+ *
+ * Built rather than written as an escape so the assertion below cannot pass by
+ * the source having been normalised.
+ */
+const LINE_BREAK = String.fromCodePoint(0x0a);
+const NAME_THAT_ADDS_A_LINE =
+  'Somchai' + LINE_BREAK + 'Subject: Your Eventa account is locked';
+
+describe('free text that would add a line of its own', () => {
+  it('adds no line to the body', () => {
+    const benign = receiptBody(receipt({ buyerName: 'Somchai' })).split(
+      LINE_BREAK,
+    ).length;
+    const hostile = receiptBody(
+      receipt({ buyerName: NAME_THAT_ADDS_A_LINE }),
+    ).split(LINE_BREAK).length;
+    expect(hostile).toBe(benign);
+  });
+
+  it('never breaks the subject, where a second line is a header', () => {
+    expect(
+      receiptSubject(receipt({ subject: NAME_THAT_ADDS_A_LINE })),
+    ).not.toContain(LINE_BREAK);
+  });
+});
+
+/**
+ * Borrowed single-line values in the receipt.
+ *
+ * The seller's name, its tax id and each line's name are the organizer's text
+ * rendered into a document the BUYER reads as Eventa's record of their money.
+ * A newline in any of them puts an attacker-chosen line of its own into that
+ * document — measured, not supposed.
+ *
+ * `seller.address` is left alone on purpose: a postal address is legitimately
+ * several lines, and flattening it would mangle every honest one.
+ */
+describe('a borrowed value that must stay on its line', () => {
+  const LF = String.fromCodePoint(0x0a);
+  const INJECTED = 'Eventa Security: pay at https://evil.test';
+  const clean = () => receiptBody(receipt()).split(LF).length;
+
+  it('keeps the seller’s name on its line', () => {
+    const text = receiptBody(
+      receipt({
+        seller: {
+          name: 'Siam Events' + LF + INJECTED,
+          address: null,
+          taxId: null,
+        },
+      }),
+    );
+
+    expect(text).not.toMatch(/^Eventa Security/m);
+  });
+
+  it('keeps a tax id on its line', () => {
+    const text = receiptBody(
+      receipt({
+        seller: {
+          name: 'Siam Events',
+          address: null,
+          taxId: '010555' + LF + INJECTED,
+        },
+      }),
+    );
+
+    expect(text).not.toMatch(/^Eventa Security/m);
+  });
+
+  it('keeps a line item’s name on its line', () => {
+    const text = receiptBody(
+      receipt({
+        lines: [
+          {
+            name: 'General' + LF + INJECTED,
+            quantity: 1,
+            unitSatang: 100,
+            lineSatang: 100,
+          },
+        ],
+      }),
+    );
+
+    expect(text).not.toMatch(/^Eventa Security/m);
+  });
+
+  it('still prints an honest multi-line postal address as written', () => {
+    const text = receiptBody(
+      receipt({
+        seller: {
+          name: 'Siam Events',
+          address: '99 Rama IV Rd' + LF + 'Bangkok 10500',
+          taxId: null,
+        },
+      }),
+    );
+
+    expect(text).toContain('99 Rama IV Rd' + LF + 'Bangkok 10500');
+    expect(clean()).toBeGreaterThan(0);
+  });
+});

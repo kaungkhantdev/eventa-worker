@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 
 /**
@@ -22,7 +24,6 @@ export interface ThankYouNotice {
 
 interface Copy {
   subject: (event: string) => string;
-  greeting: (name: string) => string;
   thanks: (event: string) => string;
   ask: string;
 }
@@ -30,28 +31,32 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     subject: (event) => `Thanks for coming to ${event}`,
-    greeting: (name) => `Hi ${name},`,
     thanks: (event) =>
       `Thanks for coming to ${event} — we hope you had a great time.`,
     ask: 'It takes a minute to tell the organizer how it went:',
   },
   th: {
     subject: (event) => `ขอบคุณที่มาร่วมงาน ${event}`,
-    greeting: (name) => `สวัสดีคุณ ${name}`,
     thanks: (event) => `ขอบคุณที่มาร่วมงาน ${event} หวังว่าคุณจะประทับใจ`,
     ask: 'ใช้เวลาเพียงนาทีเดียวเพื่อบอกผู้จัดงานว่างานเป็นอย่างไร:',
   },
 };
 
 export function thankYouSubject(notice: ThankYouNotice): string {
-  return notice.subject || COPY[notice.locale].subject(notice.eventName);
+  return inlineText(
+    notice.subject || COPY[notice.locale].subject(notice.eventName),
+  );
 }
 
 export function thankYouBody(notice: ThankYouNotice): string {
   const t = COPY[notice.locale];
   const opening = notice.opening
     ? [notice.opening]
-    : [t.greeting(notice.attendeeName), '', t.thanks(notice.eventName)];
+    : [
+        greeting(notice.locale, notice.attendeeName),
+        '',
+        t.thanks(notice.eventName),
+      ];
   return [...opening, '', t.ask, notice.surveyUrl].join('\n');
 }
 

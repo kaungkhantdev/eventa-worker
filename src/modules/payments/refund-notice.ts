@@ -1,3 +1,4 @@
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 import { formatMoney } from '../registration/confirmation-email';
 
@@ -78,7 +79,7 @@ export interface RefundNotice {
  * user — so nothing moves until a person issues it (US-FIN-02).
  */
 export function organizerSubject(notice: RefundNotice): string {
-  return `Action needed: refund owed on ${notice.reference}`;
+  return inlineText(`Action needed: refund owed on ${notice.reference}`);
 }
 
 export function organizerBody(notice: RefundNotice): string {
@@ -127,7 +128,7 @@ const BUYER_COPY = {
 } as const;
 
 export function buyerSubject(notice: RefundNotice): string {
-  return BUYER_COPY[notice.locale].subject(notice.eventName);
+  return inlineText(BUYER_COPY[notice.locale].subject(notice.eventName));
 }
 
 export function buyerBody(notice: RefundNotice): string {

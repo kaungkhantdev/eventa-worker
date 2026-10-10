@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 import { formatWhen } from '../registration/confirmation-email';
 
@@ -27,7 +29,6 @@ export interface ReminderNotice {
 
 interface Copy {
   subject: (event: string) => string;
-  greeting: (name: string) => string;
   soon: (event: string) => string;
   when: string;
   where: string;
@@ -37,7 +38,6 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     subject: (event) => `Tomorrow: ${event}`,
-    greeting: (name) => `Hi ${name},`,
     soon: (event) => `A reminder that ${event} is coming up.`,
     when: 'When',
     where: 'Where',
@@ -45,7 +45,6 @@ const COPY: Record<Locale, Copy> = {
   },
   th: {
     subject: (event) => `พรุ่งนี้: ${event}`,
-    greeting: (name) => `สวัสดีคุณ ${name}`,
     soon: (event) => `ขอเตือนว่า ${event} ใกล้จะถึงแล้ว`,
     when: 'วันเวลา',
     where: 'สถานที่',
@@ -54,21 +53,30 @@ const COPY: Record<Locale, Copy> = {
 };
 
 export function reminderSubject(notice: ReminderNotice): string {
-  return notice.subject || COPY[notice.locale].subject(notice.eventName);
+  return inlineText(
+    notice.subject || COPY[notice.locale].subject(notice.eventName),
+  );
 }
 
 export function reminderBody(notice: ReminderNotice): string {
   const t = COPY[notice.locale];
   const opening = notice.opening
     ? [notice.opening]
-    : [t.greeting(notice.attendeeName), '', t.soon(notice.eventName)];
+    : [
+        greeting(notice.locale, notice.attendeeName),
+        '',
+        // Flattened: the organizer's text, read by an attendee. `opening`
+        // below is deliberately NOT flattened — it is the organizer's own
+        // message and is meant to run to several lines.
+        t.soon(inlineText(notice.eventName)),
+      ];
   return [
     ...opening,
     '',
     `${t.when}: ${formatWhen(notice.startAt, notice.timezone, notice.locale)}`,
     // Omitted rather than printed blank: "Where: " with nothing after it is a
     // personalization field left unfilled.
-    ...(notice.where ? [`${t.where}: ${notice.where}`] : []),
+    ...(notice.where ? [`${t.where}: ${inlineText(notice.where)}`] : []),
     '',
     t.tickets,
     notice.myEventsUrl,

@@ -58,3 +58,92 @@ describe('the ticket link', () => {
     );
   });
 });
+
+/**
+ * A buyer's own name with a line break in it. eventa-api's `BuyerDto.name` is
+ * `@IsString() @IsNotEmpty() @MaxLength(120)` — no charset rule and no newline
+ * rule — so this is a name the API accepts and the bus delivers.
+ *
+ * Built rather than written as an escape so the assertion below cannot pass by
+ * the source having been normalised.
+ */
+const LINE_BREAK = String.fromCodePoint(0x0a);
+const NAME_THAT_ADDS_A_LINE =
+  'Somchai' + LINE_BREAK + 'Subject: Your Eventa account is locked';
+
+describe('free text that would add a line of its own', () => {
+  it('adds no line to the body', () => {
+    const benign = reminderBody({
+      ...base,
+      locale: 'en',
+      attendeeName: 'Somchai',
+    }).split(LINE_BREAK).length;
+    const hostile = reminderBody({
+      ...base,
+      locale: 'en',
+      attendeeName: NAME_THAT_ADDS_A_LINE,
+    }).split(LINE_BREAK).length;
+    expect(hostile).toBe(benign);
+  });
+
+  it('never breaks the subject, where a second line is a header', () => {
+    expect(
+      reminderSubject({
+        ...base,
+        locale: 'en',
+        subject: NAME_THAT_ADDS_A_LINE,
+      }),
+    ).not.toContain(LINE_BREAK);
+  });
+});
+
+/**
+ * The fields beside the name.
+ *
+ * The shared "adds no line to the body" test varies only `attendeeName`, so it
+ * passed while two other borrowed values still added one: measured, a newline
+ * in `eventName` or in `where` took this body from 9 lines to 10, putting an
+ * attacker-chosen line into a message the attendee reads as Eventa's.
+ *
+ * Both are the ORGANIZER's text and the reader is an attendee, so this is a
+ * boundary between two principals, not a value the reader owns. `opening` is
+ * deliberately not flattened: it is the organizer's own message and is meant
+ * to be several lines.
+ */
+describe('a borrowed value that is not the name', () => {
+  const LF = String.fromCodePoint(0x0a);
+  const clean = () => reminderBody({ ...base, locale: 'en' }).split(LF).length;
+
+  it('keeps the event name on its own line', () => {
+    const body = reminderBody({
+      ...base,
+      locale: 'en',
+      eventName: 'Summit' + LF + 'Eventa Security: https://evil.test',
+    });
+
+    expect(body.split(LF)).toHaveLength(clean());
+    expect(body).not.toMatch(/^Eventa Security/m);
+  });
+
+  it('keeps the place on its own line', () => {
+    const body = reminderBody({
+      ...base,
+      locale: 'en',
+      where: 'QSNCC' + LF + 'Eventa Security: https://evil.test',
+    });
+
+    expect(body.split(LF)).toHaveLength(clean());
+  });
+
+  /** The organizer's own message is theirs to lay out, and stays multi-line. */
+  it('leaves the organizer’s own opening its own lines', () => {
+    const body = reminderBody({
+      ...base,
+      locale: 'en',
+      opening: 'Dear guest,' + LF + '' + LF + 'We look forward to it.',
+    });
+
+    expect(body.split(LF).length).toBeGreaterThan(clean() - 1);
+    expect(body).toContain('We look forward to it.');
+  });
+});
