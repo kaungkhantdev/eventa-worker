@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 import type SMTPPool from 'nodemailer/lib/smtp-pool';
 import type { Env } from '../../config/env.validation';
-import { EmailMessage, EmailProvider } from './email.provider';
+import { EmailMessage, EmailProvider, logKind } from './email.provider';
 
 /**
  * Real delivery over SMTP.
@@ -52,10 +52,13 @@ export class SmtpEmailProvider
       subject: message.subject,
       text: message.text,
     });
-    // The provider's own id, which is what a bounce is traced by. The subject
-    // is safe to log; the recipient is PII and stays at debug.
+    // The provider's own id — what a bounce is traced by — and the message's
+    // kind. NOT the subject: it used to be Eventa's own copy, but an
+    // organizer's merge fields are filled into it, so it can carry the buyer's
+    // name (see {@link logKind}). Nothing is lost by dropping it, because the
+    // id is what a bounce is looked up by. The recipient is PII, at debug.
     this.logger.log(
-      { subject: message.subject, messageId: sent.messageId },
+      { kind: logKind(message), messageId: sent.messageId },
       'Email sent',
     );
     this.logger.debug({ to: message.to }, 'Email recipient');

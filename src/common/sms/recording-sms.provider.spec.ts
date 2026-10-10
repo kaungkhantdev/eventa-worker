@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { MessageDeliveriesRepository } from '../messaging/message-deliveries.repository';
 import { RecordingSmsProvider } from './recording-sms.provider';
 import type { SmsMessage, SmsProvider } from './sms.provider';
@@ -108,5 +109,96 @@ describe('RecordingSmsProvider (US-MSG-06)', () => {
     deliveries.record.mockRejectedValue(new Error('db down'));
 
     await expect(provider.send(message())).rejects.toThrow('HTTP 503');
+  });
+
+  /**
+   * The warn line when the delivery log cannot be written — the SMS twin.
+   *
+   * Identical to the email recorder's, and that is the point: the same
+   * `reasonOf(cause)` returned the caught error's `.message`, and the cause here
+   * comes from Drizzle, which builds it as
+   * (drizzle-orm@0.45.2/errors.cjs:36)
+   *
+   *     super(`Failed query: ${query}\nparams: ${params}`)
+   *
+   * so the message carries the BOUND PARAMS of this very insert — the
+   * recipient's email address and their name. Fixing the email recorder alone
+   * left this one leaking the same values from a copy of the same four lines,
+   * which is why `dbReason` is now shared rather than written twice.
+   */
+  describe('when the delivery log cannot be written', () => {
+    const RECIPIENT = 'anong@x.test';
+    const RECIPIENT_NAME = 'Anong';
+
+    function drizzleFailure(): Error {
+      const params = [
+        7,
+        'sms',
+        'registration-confirmation',
+        RECIPIENT,
+        RECIPIENT_NAME,
+      ];
+      const err = new Error(
+        'Failed query: insert into "message_deliveries" ' +
+          '("organization_id","channel","kind","recipient_email","recipient_name") ' +
+          'values ($1,$2,$3,$4,$5)\nparams: ' +
+          params.join(','),
+      );
+      err.cause = Object.assign(new Error('deadlock detected'), {
+        code: '40P01',
+      });
+      return err;
+    }
+
+    function captureWarnings(): { text: () => string; restore: () => void } {
+      const seen: unknown[] = [];
+      const spy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation((...args: unknown[]) => {
+          seen.push(...args);
+        });
+      return {
+        text: () => JSON.stringify(seen),
+        restore: () => spy.mockRestore(),
+      };
+    }
+
+    it('does not print the recipient into the log', async () => {
+      deliveries.record.mockRejectedValue(drizzleFailure());
+      const captured = captureWarnings();
+      try {
+        await provider.send(message());
+
+        expect(captured.text()).not.toContain(RECIPIENT);
+        expect(captured.text()).not.toContain(RECIPIENT_NAME);
+      } finally {
+        captured.restore();
+      }
+    });
+
+    it('does not print the statement either', async () => {
+      deliveries.record.mockRejectedValue(drizzleFailure());
+      const captured = captureWarnings();
+      try {
+        await provider.send(message());
+
+        expect(captured.text()).not.toContain('insert into');
+        expect(captured.text()).not.toContain('params:');
+      } finally {
+        captured.restore();
+      }
+    });
+
+    it('says what the database refused, by code', async () => {
+      deliveries.record.mockRejectedValue(drizzleFailure());
+      const captured = captureWarnings();
+      try {
+        await provider.send(message());
+
+        expect(captured.text()).toContain('40P01');
+      } finally {
+        captured.restore();
+      }
+    });
   });
 });

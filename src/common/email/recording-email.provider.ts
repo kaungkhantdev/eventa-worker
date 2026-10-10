@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { Clock } from '../time/clock';
 import type { MessageDeliveriesRepository } from '../messaging/message-deliveries.repository';
+import { dbReason } from '../db/db-error';
 import { EmailProvider, type EmailMessage } from './email.provider';
 
 /**
@@ -66,13 +67,20 @@ export class RecordingEmailProvider extends EmailProvider {
       });
     } catch (cause) {
       this.logger.warn(
-        { kind: context.kind, status, reason: reasonOf(cause) },
+        { kind: context.kind, status, db: dbReason(cause) },
         'Could not record a delivery — the message itself was not affected',
       );
     }
   }
 }
 
+/**
+ * Why a send failed, for the organizer to read on their own delivery row.
+ *
+ * The transport's own words on purpose — "550 mailbox unavailable" is the
+ * answer to "why did my message not arrive", and this row is already scoped to
+ * the one workspace whose message it was.
+ */
 function reasonOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }

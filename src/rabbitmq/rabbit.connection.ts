@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import * as amqp from 'amqplib';
 import { reconnectDelayMs } from './reconnect-backoff';
+import { safeError } from '../common/logging/safe-error';
 
 type AmqpConnection = Awaited<ReturnType<typeof amqp.connect>>;
 export type AmqpChannel = Awaited<ReturnType<AmqpConnection['createChannel']>>;
@@ -60,7 +61,7 @@ export class RabbitConnection implements OnModuleDestroy {
     connection.on('error', (err: unknown) =>
       // Logged, not acted on: amqplib always follows an error with a 'close',
       // and reconnecting from both would race two connections into existence.
-      this.logger.error({ err }, 'RabbitMQ connection error'),
+      this.logger.error({ err: safeError(err) }, 'RabbitMQ connection error'),
     );
     connection.on('close', () => {
       this.channel = undefined;
@@ -125,7 +126,7 @@ export class RabbitConnection implements OnModuleDestroy {
     } catch (err) {
       this.channel = undefined;
       this.connection = undefined;
-      this.logger.error({ err }, 'RabbitMQ reconnect failed');
+      this.logger.error({ err: safeError(err) }, 'RabbitMQ reconnect failed');
       this.scheduleReconnect();
     }
   }
