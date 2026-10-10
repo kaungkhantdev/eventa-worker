@@ -55,7 +55,7 @@ export function thankYouBody(notice: ThankYouNotice): string {
     : [
         greeting(notice.locale, notice.attendeeName),
         '',
-        t.thanks(notice.eventName),
+        t.thanks(inlineText(notice.eventName)),
       ];
   return [...opening, '', t.ask, notice.surveyUrl].join('\n');
 }

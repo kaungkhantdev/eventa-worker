@@ -153,7 +153,7 @@ export function confirmationBody(
       : [
           greeting(details.locale, details.buyerName),
           '',
-          t.confirmed(details.eventName),
+          t.confirmed(inlineText(details.eventName)),
         ]),
     '',
     `${t.reference}: ${details.reference}`,
@@ -171,8 +171,9 @@ export function confirmationBody(
 }
 
 function whereLine(details: ConfirmationDetails, t: Copy): string[] {
-  if (details.isOnline) return [`${t.where}: ${details.whereText ?? t.online}`];
-  return details.whereText ? [`${t.where}: ${details.whereText}`] : [];
+  const where = details.whereText ? inlineText(details.whereText) : null;
+  if (details.isOnline) return [`${t.where}: ${where ?? t.online}`];
+  return where ? [`${t.where}: ${where}`] : [];
 }
 
 function totalLine(details: ConfirmationDetails, t: Copy): string {

@@ -1,5 +1,5 @@
 import {
-  MAX_SPACELESS_NAME_ELEMENT,
+  MAX_SPACELESS_NAME_LETTERS,
   invitationGreetingName,
 } from './invitation-name';
 
@@ -30,16 +30,28 @@ describe('invitationGreetingName, on names people really have', () => {
     expect(invitationGreetingName(name)).toBe(name);
   });
 
+  it('greets a name element of exactly the maximum length', () => {
+    const atCap = 'ก'.repeat(MAX_SPACELESS_NAME_LETTERS);
+
+    expect(invitationGreetingName(atCap)).toBe(atCap);
+  });
+
   /**
    * The cap is per ELEMENT, not per name, which is the whole point: a Thai
-   * name of three elements is 42 code points and must pass, while 42 code
-   * points in ONE element is not a name anybody has.
+   * name of several elements must pass, while the same total in ONE element
+   * is not a name anybody has.
+   *
+   * The two elements here are deliberately BELOW the element cap, because
+   * `safeDisplayName` separately caps the whole name at 48 code points — two
+   * elements at 24 letters each come to 49 and are refused by that, not by
+   * this. The real name it was sized against, rank and given name and
+   * grandfathered surname, is 46.
    */
-  it('greets a name element of exactly the maximum length', () => {
-    const atCap = 'ก'.repeat(MAX_SPACELESS_NAME_ELEMENT);
+  it('greets a name of several elements', () => {
+    const element = 'ก'.repeat(20);
 
-    expect(invitationGreetingName(`${atCap} ${atCap}`)).toBe(
-      `${atCap} ${atCap}`,
+    expect(invitationGreetingName(`${element} ${element}`)).toBe(
+      `${element} ${element}`,
     );
   });
 });
@@ -61,7 +73,7 @@ describe('invitationGreetingName, on a sentence the word cap cannot see', () => 
   });
 
   it('declines one element longer than a name element, in every listed script', () => {
-    const tooLong = (ch: string) => ch.repeat(MAX_SPACELESS_NAME_ELEMENT + 1);
+    const tooLong = (ch: string) => ch.repeat(MAX_SPACELESS_NAME_LETTERS + 1);
 
     for (const ch of ['ก', 'ກ', 'ក', 'က', '中', 'あ', 'ア', 'ᨠ']) {
       expect(invitationGreetingName(tooLong(ch))).toBeNull();
@@ -73,7 +85,7 @@ describe('invitationGreetingName, on a sentence the word cap cannot see', () => 
    * prefix would buy an attacker the cap back: `Anan` + a sentence is one run.
    */
   it('measures a run that only partly uses such a script', () => {
-    const run = `Anan${'ก'.repeat(MAX_SPACELESS_NAME_ELEMENT)}`;
+    const run = `Anan${'ก'.repeat(MAX_SPACELESS_NAME_LETTERS)}`;
 
     expect(invitationGreetingName(run)).toBeNull();
   });
@@ -81,7 +93,7 @@ describe('invitationGreetingName, on a sentence the word cap cannot see', () => 
   it('declines the whole name rather than the offending element', () => {
     // Keeping part of a name nobody wrote as a name is how the deny-list this
     // replaced edited a hostile string into a plausible greeting.
-    const name = `สมชาย ${'ก'.repeat(MAX_SPACELESS_NAME_ELEMENT + 1)}`;
+    const name = `สมชาย ${'ก'.repeat(MAX_SPACELESS_NAME_LETTERS + 1)}`;
 
     expect(invitationGreetingName(name)).toBeNull();
   });
@@ -103,7 +115,7 @@ describe('invitationGreetingName, on what it does not catch', () => {
     // 17-code-point surname forces us to allow.
     const terse = 'บัญชีถูกแฮกโทรด่วน';
 
-    expect(Array.from(terse).length).toBeLessThan(MAX_SPACELESS_NAME_ELEMENT);
+    expect(Array.from(terse).length).toBeLessThan(MAX_SPACELESS_NAME_LETTERS);
     expect(invitationGreetingName(terse)).toBe(terse);
   });
 
@@ -149,5 +161,55 @@ describe('invitationGreetingName, on what the shared rule already refused', () =
     ].join('');
 
     expect(invitationGreetingName(halved)).toBeNull();
+  });
+});
+
+/**
+ * A long Thai surname is a name, not a sentence.
+ *
+ * The cap used to count CODE POINTS, and in Thai that is an artifact of the
+ * encoding rather than a measure of the name: every vowel and tone mark is
+ * its own code point, so two surnames of equal length differ by half
+ * depending on how heavily they are marked. At 20 code points the compound
+ * below — a real, grandfathered surname — was declined whole and the
+ * invitation greeted "Hello,".
+ *
+ * Measured, in the unit Thailand's Person Name Act actually uses:
+ *
+ *   ศรีวรรณวิทย์ไพศาล        17 code points, 14 letters  (longest in evidence)
+ *   ศรีวรรณวิทย์ไพศาลมงคล    21 code points, 18 letters  (grandfathered compound)
+ *   the 48-code-point lure   48 code points, 35 letters
+ *
+ * So the unit is letters, and the cap sits above the names and well below the
+ * sentence.
+ */
+describe('a long Thai surname', () => {
+  const GRANDFATHERED = 'ศรีวรรณวิทย์ไพศาลมงคล';
+
+  it('greets somebody whose surname the Act grandfathers', () => {
+    expect(invitationGreetingName(GRANDFATHERED)).toBe(GRANDFATHERED);
+  });
+
+  it('still greets the ordinary ones', () => {
+    expect(invitationGreetingName('สุขสวัสดิ์')).toBe('สุขสวัสดิ์');
+    expect(invitationGreetingName('ศรีวรรณวิทย์ไพศาล')).toBe(
+      'ศรีวรรณวิทย์ไพศาล',
+    );
+  });
+
+  it('still refuses the sentence, which is twice the length in letters', () => {
+    expect(
+      invitationGreetingName(
+        'ด่วนบัญชีถูกแฮกโปรดโทรฝ่ายสนับสนุนทันทีเดี๋ยวนี้',
+      ),
+    ).toBeNull();
+  });
+
+  /** Marks are not letters: a heavily-toned name is not penalised for it. */
+  it('does not count tone marks against a name', () => {
+    const marked = 'ก่ก้ก๊ก๋ก่ก้ก๊ก๋ก่ก้ก๊ก๋';
+
+    expect(Array.from(marked).length).toBeGreaterThan(20);
+    expect(invitationGreetingName(marked)).toBe(marked);
   });
 });

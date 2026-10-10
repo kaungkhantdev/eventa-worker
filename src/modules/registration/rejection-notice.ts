@@ -159,7 +159,7 @@ export function rejectionBody(notice: RejectionNotice): string {
       : [
           greeting(notice.locale, notice.attendeeName),
           '',
-          t.rejected(notice.eventName),
+          t.rejected(inlineText(notice.eventName)),
         ]),
     '',
     `${t.reference}: ${notice.reference}`,

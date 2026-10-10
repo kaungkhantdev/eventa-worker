@@ -95,12 +95,16 @@ export function offerBody(notice: OfferNotice): string {
   const t = COPY[notice.locale];
   const opening = notice.opening
     ? [notice.opening]
-    : [greeting(notice.locale, notice.name), '', t.opened(notice.eventName)];
+    : [
+        greeting(notice.locale, notice.name),
+        '',
+        t.opened(inlineText(notice.eventName)),
+      ];
   const price = formatMoney(notice.totalSatang, notice.currency, notice.locale);
   return [
     ...opening,
     '',
-    `${notice.ticketTypeName} × ${notice.ticketCount}: ${price}`,
+    `${inlineText(notice.ticketTypeName)} × ${notice.ticketCount}: ${price}`,
     `${t.payBy}: ${formatWhen(notice.offerExpiresAt, notice.timezone, notice.locale)}`,
     '',
     t.payHere,
@@ -119,7 +123,7 @@ export function expiredBody(notice: ExpiredNotice): string {
   return [
     greeting(notice.locale, notice.name),
     '',
-    t.expired(notice.eventName),
+    t.expired(inlineText(notice.eventName)),
     '',
     t.offList,
   ].join('\n');

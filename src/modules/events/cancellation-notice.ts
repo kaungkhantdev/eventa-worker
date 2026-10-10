@@ -77,10 +77,10 @@ export function cancellationBody(notice: CancellationNotice): string {
     : [
         greeting(notice.locale, notice.attendeeName),
         '',
-        t.cancelled(notice.eventName),
+        t.cancelled(inlineText(notice.eventName)),
         // Omitted rather than printed empty: "Reason: " with nothing after it
         // is a personalization field left unfilled.
-        ...(notice.reason ? ['', t.reason(notice.reason)] : []),
+        ...(notice.reason ? ['', t.reason(inlineText(notice.reason))] : []),
       ];
   const refund = notice.awaitingApproval ? t.refundAwaitingApproval : t.refund;
   return [...opening, '', refund].join('\n');

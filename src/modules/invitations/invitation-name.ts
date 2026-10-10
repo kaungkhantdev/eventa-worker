@@ -85,24 +85,33 @@ import { safeDisplayName } from '../../common/messaging/display-name';
  */
 
 /**
- * How many code points one element of a name may hold, when the script gives
+ * How many LETTERS one element of a name may hold, when the script gives
  * `split(' ')` nothing to count.
  *
+ * Letters, not code points. In Thai a code point is an artifact of the
+ * encoding rather than a measure of the name: every vowel and tone mark is
+ * its own, so two surnames of equal length differ by half depending on how
+ * heavily they are marked — and the unit Thailand's Person Name Act legislates
+ * in is letters. Counting code points penalised the marked names, and at 20 it
+ * declined a real grandfathered surname and greeted that person "Hello,".
+ *
  * Measured against real names rather than against the lure — a cap set to
- * exclude an attack is a cap that excludes somebody's surname next year. The
- * longest name element in evidence is `ศรีวรรณวิทย์ไพศาล`, 17 code points,
- * because every Thai vowel and tone mark is its own. Thailand's Person Name Act
- * caps a NEWLY registered surname at ten Thai letters, and ten letters with the
- * vowels and tones that write them come to roughly twenty code points — so 20
- * clears the evidence, leaves room for the longer compound surnames the Act
- * grandfathers, and still refuses the 48-code-point sentence in the finding.
+ * exclude an attack is a cap that excludes somebody's surname next year:
+ *
+ *   ศรีวรรณวิทย์ไพศาล        17 code points, 14 letters  (longest in evidence)
+ *   ศรีวรรณวิทย์ไพศาลมงคล    21 code points, 18 letters  (grandfathered compound)
+ *   the 48-code-point lure   48 code points, 35 letters
+ *
+ * The Act caps a NEWLY registered surname at ten letters and grandfathers the
+ * longer compounds, which reach 18 in evidence. 24 clears those with room and
+ * still refuses a sentence at nearly twice that.
  *
  * It is deliberately NOT derived from `MAX_DISPLAY_NAME_LENGTH`: that cap is
  * the length of a whole greeting's worth of name, and this is the length of one
  * part of one name. Tying them would mean a two-element Thai name could not use
  * the budget a three-element one gets.
  */
-export const MAX_SPACELESS_NAME_ELEMENT = 20;
+export const MAX_SPACELESS_NAME_LETTERS = 24;
 
 /**
  * Scripts written without spaces between words, so `split(' ')` cannot count
@@ -145,5 +154,20 @@ export function invitationGreetingName(raw: string): string | null {
  */
 function isNameElement(element: string): boolean {
   if (!SPACELESS_SCRIPT.test(element)) return true;
-  return Array.from(element).length <= MAX_SPACELESS_NAME_ELEMENT;
+  return letterCount(element) <= MAX_SPACELESS_NAME_LETTERS;
 }
+
+/**
+ * Letters, with the combining marks that write them left out.
+ *
+ * `Mn` is Unicode's "nonspacing mark": in Thai that is every vowel sign and
+ * every tone mark, none of which is a letter in the sense the Person Name Act
+ * counts. Excluding them is what makes this a measure of the NAME rather than
+ * of its encoding.
+ */
+function letterCount(element: string): number {
+  return Array.from(element).filter((ch) => !COMBINING_MARK.test(ch)).length;
+}
+
+/** Unicode nonspacing marks — Thai vowel signs and tone marks among them. */
+const COMBINING_MARK = /\p{Mn}/u;

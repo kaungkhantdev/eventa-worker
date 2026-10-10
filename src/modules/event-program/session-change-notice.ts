@@ -88,17 +88,17 @@ export function sessionChangeBody(notice: SessionChangeNotice): string {
     greeting(notice.locale, notice.attendeeName),
     '',
     notice.when
-      ? t.rescheduled(notice.eventName)
-      : t.movedRoom(notice.eventName),
+      ? t.rescheduled(inlineText(notice.eventName))
+      : t.movedRoom(inlineText(notice.eventName)),
     '',
-    `${t.session}: ${notice.sessionTitle}`,
+    `${t.session}: ${inlineText(notice.sessionTitle)}`,
     // Each line is OMITTED rather than printed with nothing in it: US-MSG-01 is
     // explicit that a message never goes out with a field left unfilled, and a
     // reader told the room moved from nowhere to nowhere learns nothing.
     ...(notice.when ? [`${t.when}: ${change(notice.when)}`] : []),
     ...(notice.room ? [`${t.where}: ${roomChange(notice.room, t)}`] : []),
     '',
-    t.unaffected(notice.eventName),
+    t.unaffected(inlineText(notice.eventName)),
   ].join('\n');
 }
 
@@ -108,7 +108,8 @@ function change(moved: Change<string>): string {
 
 function roomChange(moved: Change<string | null>, t: Copy): string {
   return change({
-    before: moved.before ?? t.noRoom,
-    after: moved.after ?? t.noRoom,
+    // The room names are the organizer's text, each on a line of its own.
+    before: moved.before ? inlineText(moved.before) : t.noRoom,
+    after: moved.after ? inlineText(moved.after) : t.noRoom,
   });
 }

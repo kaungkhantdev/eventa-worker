@@ -85,11 +85,11 @@ export function organizerSubject(notice: RefundNotice): string {
 export function organizerBody(notice: RefundNotice): string {
   const amount = formatMoney(notice.amountSatang, notice.currency, 'en');
   return [
-    `A payment of ${amount} needs refunding for ${notice.eventName}.`,
+    `A payment of ${amount} needs refunding for ${inlineText(notice.eventName)}.`,
     '',
     `Booking reference: ${notice.reference}`,
     `Amount: ${amount}`,
-    `Reason: ${describeReason(notice.reason, 'en')}.`,
+    `Reason: ${inlineText(describeReason(notice.reason, 'en'))}.`,
     '',
     'The registration was cancelled and the buyer has been told their money is',
     'coming back. Issue the refund from Finance → Payments to complete it.',
@@ -135,6 +135,9 @@ export function buyerBody(notice: RefundNotice): string {
   return BUYER_COPY[notice.locale].body(
     notice.reference,
     formatMoney(notice.amountSatang, notice.currency, notice.locale),
-    describeReason(notice.reason, notice.locale),
+    // Flattened like the organizer's copy of the same value: `describeReason`
+    // passes an UNRECOGNISED code straight through, so this is free text and
+    // not the closed set the parameter name suggests.
+    inlineText(describeReason(notice.reason, notice.locale)),
   );
 }

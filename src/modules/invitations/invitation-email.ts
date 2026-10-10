@@ -135,9 +135,11 @@ export function invitationBody(notice: InvitationNotice): string {
  */
 function opening(notice: InvitationNotice, t: Copy): string[] {
   const greet = notice.opening ?? greeting(notice, t);
-  return [greet, '', t.invited(notice.eventName)];
+  return [greet, '', t.invited(inlineText(notice.eventName))];
 }
 
 function greeting(notice: InvitationNotice, t: Copy): string {
-  return notice.name ? t.greeting(notice.name) : t.greetingWithoutName;
+  return notice.name
+    ? t.greeting(inlineText(notice.name))
+    : t.greetingWithoutName;
 }

@@ -142,14 +142,17 @@ export function receiptBody(receipt: PaymentReceipt): string {
     : [
         greeting(receipt.locale, receipt.buyerName),
         '',
-        t.thanks(receipt.eventName),
+        t.thanks(inlineText(receipt.eventName)),
       ];
   return [
     ...opening,
     '',
     `${t.number}: ${receipt.number}`,
     `${t.paidOn}: ${formatPaidOn(receipt.paidAt, receipt.locale)}`,
-    `${t.method}: ${t.methods[receipt.method] ?? receipt.method}`,
+    // The fallback prints the STORED method verbatim when the lookup has no
+    // entry for it, so this is free text whenever a new provider method
+    // appears — the same lookup-with-passthrough shape as `describeReason`.
+    `${t.method}: ${inlineText(t.methods[receipt.method] ?? receipt.method)}`,
     `${t.billedTo}: ${inlineText(receipt.buyerName)}`,
     '',
     ...sellerLines(receipt.seller, t),
