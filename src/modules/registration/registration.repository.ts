@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import {
   events,
+  orders,
   organizations,
   tickets,
   users,
@@ -12,6 +13,7 @@ import { LIVE_TICKET_STATUSES } from '../../db/schema/tickets';
 import { ATTENDEE_PERSONA, PLATFORM_ORG_SLUG } from '../../db/schema/events';
 import { withTenant, type Tx } from '../../db/tenant';
 import type { ConfirmationTicket } from './confirmation-email';
+import type { RejectionPayment } from './rejection-notice';
 
 export interface ConfirmationEvent {
   name: string;
@@ -23,6 +25,19 @@ export interface ConfirmationEvent {
   onlineNote: string | null;
   slug: string;
   locale: Locale | null;
+}
+
+/**
+ * Everything the rejection notice needs that the message did not carry
+ * (US-REG-02): the event's name, and where the order's money stands NOW.
+ *
+ * Read rather than carried because eventa-api commits the rejection before it
+ * attempts the refund — so `paid` and `refunded` are both states this message
+ * can legitimately arrive in, and only a fresh read says which.
+ */
+export interface RejectionSource extends RejectionPayment {
+  eventName: string;
+  currency: string;
 }
 
 /** Everything the confirmation email needs that the message did not carry. */
@@ -78,6 +93,39 @@ export class RegistrationRepository {
         userLocale: await this.attendeeLocale(tx, buyerEmail),
         tickets: await this.liveTickets(tx, organizationId, orderId),
       };
+    });
+  }
+
+  /**
+   * The order a rejection notice is about, or null when there is no longer one
+   * to write about (US-REG-02).
+   *
+   * The event is joined off the ORDER's own `event_id` rather than the
+   * message's: they are the same event, and the row under the lock is the
+   * authority on which.
+   */
+  async loadRejection(
+    organizationId: number,
+    orderId: string,
+  ): Promise<RejectionSource | null> {
+    return withTenant(this.db, organizationId, async (tx) => {
+      const [row] = await tx
+        .select({
+          eventName: events.name,
+          totalSatang: orders.totalSatang,
+          currency: orders.currency,
+          paymentStatus: orders.paymentStatus,
+        })
+        .from(orders)
+        .innerJoin(events, eq(events.id, orders.eventId))
+        .where(
+          and(
+            eq(orders.id, orderId),
+            eq(orders.organizationId, organizationId),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
     });
   }
 

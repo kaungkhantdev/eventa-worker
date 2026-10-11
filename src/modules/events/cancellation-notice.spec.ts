@@ -96,3 +96,29 @@ describe('the cancellation notice, in the reader’s language (US-EVT-08)', () =
     });
   });
 });
+
+/**
+ * A buyer's own name, with a lure and a line break in it. `orders.buyer_name`
+ * is `@IsString() @IsNotEmpty() @MaxLength(120)` in eventa-api's `BuyerDto` —
+ * no charset, no newline restriction — so this is a name the API accepts.
+ */
+const NAME_WITH_A_LINE_BREAK =
+  'Somchai\nSubject: Your Eventa account is locked, call 0812345678';
+
+describe('a name that is not one', () => {
+  it('adds no line to the body', () => {
+    const lines = (attendeeName: string): number =>
+      cancellationBody({ ...base, attendeeName, locale: 'en' }).split('\n')
+        .length;
+    expect(lines(NAME_WITH_A_LINE_BREAK)).toBe(lines('Somchai'));
+  });
+
+  it('never breaks the subject, where a second line is a header', () => {
+    const subject = cancellationSubject({
+      ...base,
+      locale: 'en',
+      subject: `${NAME_WITH_A_LINE_BREAK} — cancelled`,
+    });
+    expect(subject).not.toMatch(/[\r\n]/);
+  });
+});

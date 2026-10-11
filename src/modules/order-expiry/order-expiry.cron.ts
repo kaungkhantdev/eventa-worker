@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OrderExpiryService } from './order-expiry.service';
+import { safeError } from '../../common/logging/safe-error';
 
 /** The registered job name, so it can be inspected or stopped via SchedulerRegistry. */
 export const ORDER_EXPIRY_JOB = 'order-expiry';
@@ -30,7 +31,7 @@ export class OrderExpiryCron {
     try {
       await this.expiry.sweep();
     } catch (err) {
-      this.logger.error({ err }, 'order expiry sweep failed');
+      this.logger.error({ err: safeError(err) }, 'order expiry sweep failed');
     }
   }
 }

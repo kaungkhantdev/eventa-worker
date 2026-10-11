@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ScheduledAnnouncementsService } from './scheduled-announcements.service';
+import { safeError } from '../../common/logging/safe-error';
 
 /** The registered job name, so it can be inspected or stopped via SchedulerRegistry. */
 export const SCHEDULED_ANNOUNCEMENTS_JOB = 'scheduled-announcements';
@@ -30,7 +31,10 @@ export class ScheduledAnnouncementsCron {
     try {
       await this.announcements.sendDue();
     } catch (err) {
-      this.logger.error({ err }, 'scheduled announcement sweep failed');
+      this.logger.error(
+        { err: safeError(err) },
+        'scheduled announcement sweep failed',
+      );
     }
   }
 }

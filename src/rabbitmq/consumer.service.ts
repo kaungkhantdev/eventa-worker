@@ -16,6 +16,7 @@ import {
 } from './message-handler.interface';
 import { MetricsService } from '../metrics/metrics.service';
 import { type AmqpChannel, RabbitConnection } from './rabbit.connection';
+import { safeError } from '../common/logging/safe-error';
 
 /** amqplib types message properties as `any`; coerce to a clean string|undefined. */
 function asString(value: unknown): string | undefined {
@@ -209,7 +210,7 @@ export class ConsumerService implements OnApplicationBootstrap {
 
     if (delayMs === undefined || !isRetryable(err)) {
       this.logger.error(
-        { err, ...ctx, attempt },
+        { err: safeError(err), ...ctx, attempt },
         'Handler failed — parking in the dead-letter queue',
       );
       channel.nack(msg, false, false); // → DLX/DLQ, no requeue
@@ -230,7 +231,7 @@ export class ConsumerService implements OnApplicationBootstrap {
       // The delayed copy could not be made, so the original is all there is —
       // park it rather than ack a message whose work has not been done.
       this.logger.error(
-        { err: publishErr, ...ctx, attempt },
+        { err: safeError(publishErr), ...ctx, attempt },
         'Could not schedule a retry — parking instead',
       );
       channel.nack(msg, false, false);
@@ -238,7 +239,7 @@ export class ConsumerService implements OnApplicationBootstrap {
     }
 
     this.logger.warn(
-      { err, ...ctx, attempt, delayMs },
+      { err: safeError(err), ...ctx, attempt, delayMs },
       'Handler failed — retrying after a delay',
     );
     this.metrics.recordHandled(ctx.routingKey, 'retried');

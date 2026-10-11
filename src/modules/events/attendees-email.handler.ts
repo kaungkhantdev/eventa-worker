@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EmailProvider } from '../../common/email/email.provider';
+import { inlineText } from '../../common/messaging/inline-text';
 import { IdempotencyService } from '../../common/idempotency/idempotency.service';
 import {
   type MessageContext,
@@ -51,7 +52,10 @@ export class AttendeesEmailHandler extends ValidatedHandler<AttendeesEmailReques
       recipients,
       (r) => ({
         to: r.email,
-        subject: payload.subject,
+        // The organizer typed this and it arrives raw off the bus. Both the
+        // send-now broadcast and the scheduled announcement converge here, so
+        // this is the one place either can be made safe.
+        subject: inlineText(payload.subject),
         text: payload.message,
         delivery: {
           organizationId: payload.organizationId,

@@ -25,6 +25,33 @@ export interface EmailMessage {
   delivery?: DeliveryContext;
 }
 
+/** What account mail is called in a log line, having no delivery context. */
+const ACCOUNT_MAIL = 'account';
+
+/**
+ * The one thing about a message a provider may safely write to a log.
+ *
+ * NOT the subject. A subject used to be Eventa's own copy plus an event name,
+ * and both providers logged it on that basis — the SMTP one under the comment
+ * "The subject is safe to log". It no longer is: `fill()` substitutes an
+ * organizer's merge fields into their template and the same filled string
+ * becomes the subject, so `Hi {{first_name}}, your ticket` puts a buyer's real
+ * name in it. See `messaging/merge-fields.ts`.
+ *
+ * `kind` is the catalog slug — WHICH kind of mail went out. It is chosen from
+ * a fixed catalog rather than typed by anyone, so it cannot carry personal
+ * data, and it is a better handle than the subject ever was: subjects are
+ * per-organizer prose that differ between two sends of the same message, while
+ * a slug groups them.
+ *
+ * Here rather than in each provider because there are three of them and a
+ * fourth promised (SES), and "remember not to log the subject" is a rule the
+ * next one can be written without.
+ */
+export function logKind(message: EmailMessage): string {
+  return message.delivery?.kind ?? ACCOUNT_MAIL;
+}
+
 /**
  * Abstraction over email delivery. Handlers depend on this port (DIP); the app
  * binds a concrete provider — a dev/log provider here, a real SMTP/SES provider

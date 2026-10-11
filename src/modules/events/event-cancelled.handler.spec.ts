@@ -319,4 +319,53 @@ describe('EventCancelledHandler', () => {
     ).rejects.toBeDefined();
     expect(email.send).not.toHaveBeenCalled();
   });
+
+  /**
+   * The cancellation broadcast is the one that fans a single hostile value out
+   * to everybody on an event, and it fills THREE free-text fields into a
+   * subject: the reader's own name, the event's name, and the organizer's
+   * reason (`CancelEventDto.reason`, `@MaxLength(500)`, no charset rule). The
+   * reason is the one nobody owns — it is typed by the organizer and read by
+   * every attendee, so "the name is the reader's own" does not excuse it.
+   */
+  describe('free text that would add a line of its own', () => {
+    const LINE_BREAK = String.fromCodePoint(0x0a);
+
+    beforeEach(() =>
+      recipients.cancellationRecipients.mockResolvedValue([
+        {
+          email: 'anan@x.test',
+          name: 'Somchai' + LINE_BREAK + 'Subject: your account is locked',
+          awaitingApproval: false,
+        },
+      ] satisfies CancellationRecipient[]),
+    );
+
+    it('keeps Eventa’s own greeting on one line', async () => {
+      await handler.handle(rawEvent, ctx);
+
+      expect(sent[0].text.split(LINE_BREAK)[0]).toBe(
+        'Hi Somchai Subject: your account is locked,',
+      );
+    });
+
+    it('never breaks a subject, whichever field carried the break', async () => {
+      templates.wordingFor.mockResolvedValue({
+        subjectEn: '{{first_name}} — {{event_name}} — {{reason}}',
+        bodyEn: null,
+        subjectTh: null,
+        bodyTh: null,
+      });
+
+      await handler.handle(
+        { ...rawEvent, reason: 'Flood' + LINE_BREAK + 'Bcc: a@evil.test' },
+        ctx,
+      );
+
+      expect(sent[0].subject).not.toContain(LINE_BREAK);
+      expect(sent[0].subject).toBe(
+        'Somchai Subject: your account is locked — Bangkok Summit 2026 — Flood Bcc: a@evil.test',
+      );
+    });
+  });
 });

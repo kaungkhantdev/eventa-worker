@@ -1,3 +1,5 @@
+import { greeting } from '../../common/messaging/greeting';
+import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 
 /**
@@ -33,7 +35,6 @@ export interface CancellationNotice {
 
 interface Copy {
   subject: (event: string) => string;
-  greeting: (name: string) => string;
   cancelled: (event: string) => string;
   reason: (reason: string) => string;
   refund: string;
@@ -44,7 +45,6 @@ interface Copy {
 const COPY: Record<Locale, Copy> = {
   en: {
     subject: (event) => `Cancelled: ${event}`,
-    greeting: (name) => `Hi ${name},`,
     cancelled: (event) =>
       `We're sorry to let you know that "${event}" has been cancelled.`,
     reason: (reason) => `Reason: ${reason}`,
@@ -55,7 +55,6 @@ const COPY: Record<Locale, Copy> = {
   },
   th: {
     subject: (event) => `ยกเลิกแล้ว: ${event}`,
-    greeting: (name) => `สวัสดีคุณ ${name}`,
     cancelled: (event) => `ขออภัยที่ต้องแจ้งว่า "${event}" ได้ถูกยกเลิกแล้ว`,
     reason: (reason) => `เหตุผล: ${reason}`,
     refund:
@@ -66,7 +65,9 @@ const COPY: Record<Locale, Copy> = {
 };
 
 export function cancellationSubject(notice: CancellationNotice): string {
-  return notice.subject || COPY[notice.locale].subject(notice.eventName);
+  return inlineText(
+    notice.subject || COPY[notice.locale].subject(notice.eventName),
+  );
 }
 
 export function cancellationBody(notice: CancellationNotice): string {
@@ -74,12 +75,12 @@ export function cancellationBody(notice: CancellationNotice): string {
   const opening = notice.opening
     ? [notice.opening]
     : [
-        t.greeting(notice.attendeeName),
+        greeting(notice.locale, notice.attendeeName),
         '',
-        t.cancelled(notice.eventName),
+        t.cancelled(inlineText(notice.eventName)),
         // Omitted rather than printed empty: "Reason: " with nothing after it
         // is a personalization field left unfilled.
-        ...(notice.reason ? ['', t.reason(notice.reason)] : []),
+        ...(notice.reason ? ['', t.reason(inlineText(notice.reason))] : []),
       ];
   const refund = notice.awaitingApproval ? t.refundAwaitingApproval : t.refund;
   return [...opening, '', refund].join('\n');

@@ -3,6 +3,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   uuid,
@@ -56,7 +57,12 @@ export const orders = pgTable('orders', {
   offeredAt: timestamp({ withTimezone: true }),
   offeredBy: uuid(),
   offerExpiresAt: timestamp({ withTimezone: true }),
-  offerSkipped: integer(), // smallint in eventa-api
+  // `smallint`, matching eventa-api exactly, unlike the widened `seats` and
+  // `currency` above: those are only ever READ here, where int4-for-int2 and
+  // text-for-char(3) are indistinguishable, but the sweep WRITES this one. A
+  // write is where a mirror's type stops being cosmetic, so this column is the
+  // one that has to be the real thing.
+  offerSkipped: smallint(),
   // When the order started waiting for the organizer's approval (US-REG-02).
   // Pending with this set is on the ORGANIZER's clock, not the buyer's: the
   // expiry sweep reads it only to leave such an order alone.

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ScheduledMessagesService } from './scheduled-messages.service';
+import { safeError } from '../../common/logging/safe-error';
 
 /** The registered job name, so it can be inspected or stopped via SchedulerRegistry. */
 export const SCHEDULED_MESSAGES_JOB = 'scheduled-messages';
@@ -39,7 +40,7 @@ export class ScheduledMessagesCron {
     try {
       await sweep();
     } catch (err) {
-      this.logger.error({ err }, `${what} sweep failed`);
+      this.logger.error({ err: safeError(err) }, `${what} sweep failed`);
     }
   }
 }

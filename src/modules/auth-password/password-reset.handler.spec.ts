@@ -72,4 +72,29 @@ describe('PasswordResetHandler', () => {
     await expect(handler.handle({ userId: 'u1' }, ctx)).rejects.toBeDefined();
     expect(email.send).not.toHaveBeenCalled();
   });
+
+  /**
+   * The name on the account, which is free text whoever holds a session can
+   * set — the same wire field, and the same threat model, as the notices that
+   * stopped greeting by name. A reset mail says "if you didn't ask for this you
+   * can ignore this email", which is exactly the claim a lure wants to borrow.
+   */
+  describe('a name that is not one', () => {
+    const LINE_BREAK = String.fromCodePoint(0x0a);
+
+    it('adds no line to the body', async () => {
+      const lure =
+        'Somchai' + LINE_BREAK + 'Ignore the link below and call 0812345678';
+
+      await handler.handle({ ...rawEvent, name: lure }, ctx);
+
+      expect(sent[0].text.split(LINE_BREAK)[0]).toBe('Hi,');
+      expect(sent[0].text).not.toContain('0812345678');
+    });
+
+    it('still greets a real name', async () => {
+      await handler.handle({ ...rawEvent, name: 'Somchai Jaidee' }, ctx);
+      expect(sent[0].text.split(LINE_BREAK)[0]).toBe('Hi Somchai Jaidee,');
+    });
+  });
 });
