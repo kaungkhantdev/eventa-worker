@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # eslint directly, NOT `pnpm lint`: that script carries `--fix`, which in
+      # CI rewrites the checkout and exits 0, so every fixable problem would
+      # pass silently.
+      - name: Lint
+        run: npx eslint "{src,test}/**/*.ts"
+
+      # Neither jest config type-checks (`isolatedModules` puts ts-jest in
+      # transpile-only mode), so a spec can be green while it no longer
+      # compiles. This is the step that catches that.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  # `pnpm test:e2e` is deliberately absent: test/consumer.e2e-spec.ts needs a
+  # live RabbitMQ and Postgres. Add it the way eventa-api's e2e job does if it
+  # earns its keep.
