@@ -25,6 +25,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AuthPasswordModule } from './modules/auth-password/auth-password.module';
 import { AccessModule } from './modules/access/access.module';
 import { AuthSignupModule } from './modules/auth-signup/auth-signup.module';
+import { AuthBookingSignupModule } from './modules/auth-booking-signup/auth-booking-signup.module';
 import { AuthTwoFactorModule } from './modules/auth-two-factor/auth-two-factor.module';
 import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
 import { UsersModule } from './modules/users/users.module';
@@ -48,6 +49,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     AuthModule,
     AccessModule,
     AuthSignupModule,
+    AuthBookingSignupModule,
     AuthPasswordModule,
     AuthTwoFactorModule,
     AccountDeletionModule,
