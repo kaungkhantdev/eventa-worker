@@ -18,8 +18,8 @@ jest.mock('nodemailer', () => ({
  * that the SAME filled string becomes the subject: a template of
  * `Hi {{first_name}}, your ticket` puts a buyer's real name in the subject
  * line. Both providers used to log it at `log` level — the SMTP one under the
- * comment "The subject is safe to log" — while being careful to keep the
- * recipient at `debug` and never to log the body at all.
+ * comment "The subject is safe to log" — while never logging the body at all.
+ * The recipient they kept "at `debug`", which hid nothing; see below.
  *
  * One spec over both providers rather than one each: the rule is about the
  * value, not the transport, and there is a third provider promised (SES). A
@@ -100,6 +100,28 @@ describe('what a provider may write to the log', () => {
       try {
         await build().send(message());
         expect(captured.lines()).not.toContain(BUYER);
+      } finally {
+        captured.restore();
+      }
+    },
+  );
+
+  /**
+   * The recipient used to be logged "at debug", as if that hid it. It does
+   * not: LOG_LEVEL is `debug` in the shipped .env, so every address went to
+   * the log — including the buyer's on the mail that claims an account from a
+   * booking (US-DISC-15), whose contract is that the address is never logged.
+   * The SMS providers settled the same question the same way. Bounces are
+   * traced by the provider's message id, and attendee mail has its recipient
+   * in the delivery log, where access to it is controlled.
+   */
+  it.each(providers)(
+    '%s never logs the recipient address — not even at debug',
+    async (_name, build) => {
+      const captured = captureLogs();
+      try {
+        await build().send(message({ to: 'claim.owner@example.test' }));
+        expect(captured.lines()).not.toContain('claim.owner@example.test');
       } finally {
         captured.restore();
       }

@@ -12,11 +12,12 @@ import { EmailMessage, EmailProvider, logKind } from './email.provider';
  * worker sends in bursts as the outbox drains, and re-handshaking TLS for each
  * one is both slow and the fastest way to be rate-limited by a real provider.
  *
- * Nothing here logs a body. Bodies carry single-use links and, since the
- * registration confirmation, standing credentials — "never log secrets" admits
- * no debug-level exception. A failure is rethrown rather than swallowed so the
- * message is nacked and retried; reporting success for mail that never left
- * would be worse than the outage itself.
+ * Nothing here logs a body or the recipient. Bodies carry single-use links
+ * and, since the registration confirmation, standing credentials — "never log
+ * secrets" admits no debug-level exception — and the address is personal
+ * data. A failure is rethrown rather than swallowed so the message is nacked
+ * and retried; reporting success for mail that never left would be worse than
+ * the outage itself.
  */
 @Injectable()
 export class SmtpEmailProvider
@@ -56,12 +57,12 @@ export class SmtpEmailProvider
     // kind. NOT the subject: it used to be Eventa's own copy, but an
     // organizer's merge fields are filled into it, so it can carry the buyer's
     // name (see {@link logKind}). Nothing is lost by dropping it, because the
-    // id is what a bounce is looked up by. The recipient is PII, at debug.
+    // id is what a bounce is looked up by. Nor the recipient, at any level:
+    // LOG_LEVEL is `debug` in the shipped .env, so "only at debug" hid nothing.
     this.logger.log(
       { kind: logKind(message), messageId: sent.messageId },
       'Email sent',
     );
-    this.logger.debug({ to: message.to }, 'Email recipient');
   }
 
   onModuleDestroy(): void {

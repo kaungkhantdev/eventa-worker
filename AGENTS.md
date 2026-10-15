@@ -24,9 +24,10 @@ discovers handlers via `DiscoveryService`, dispatches by routing key with dedupe
 message id — recorded only after the handler succeeds, so an interrupted run is re-processed, not
 skipped — tolerant-reader zod validation, and nack→retry→DLQ).
 
-**Handlers today — all 19 of them, in 16 flat modules under `src/modules/` (this list is exhaustive; keep
+**Handlers today — all 20 of them, in 17 flat modules under `src/modules/` (this list is exhaustive; keep
 it that way):** `access/member-invited` · `account-deletion/account-deletion-requested` ·
-`auth/signed-in` (sign-in audit) · `auth-password/{password-reset,password-changed}` ·
+`auth/signed-in` (sign-in audit) · `auth-booking-signup/booking-account-link` (US-DISC-15's one-time
+claim link) · `auth-password/{password-reset,password-changed}` ·
 `auth-signup/email-verification` · `auth-two-factor/two-factor-disabled` ·
 `event-program/session-changed` · `events/{event-published,event-cancelled,attendees-email}` ·
 `invitations/invitation-sent` · `payments/refund-required` ·
@@ -124,10 +125,11 @@ every commit and PR.
   consumer starts on application bootstrap** (`ConsumerService.onApplicationBootstrap`), not via a Nest
   microservice transport.
 - **TypeScript is full `strict`**; `no-explicit-any` is off but the type-aware `no-unsafe-*` rules apply.
-- The **14 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
-  `attendees-broadcast-interruption`, `cancellation-language`, `cancellation-recipients`, `order-expiry`,
-  `payment-receipt`, `phone-verification`, `scheduled-messages`, `scheduled-announcements`,
-  `event-reminder-switch`, `reminder-opt-out`, `waitlist-queue`) each need the **shared docker infra up**
+- The **15 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
+  `attendees-broadcast-interruption`, `booking-account-link`, `cancellation-language`,
+  `cancellation-recipients`, `order-expiry`, `payment-receipt`, `phone-verification`,
+  `scheduled-messages`, `scheduled-announcements`, `event-reminder-switch`, `reminder-opt-out`,
+  `waitlist-queue`) each need the **shared docker infra up**
   (`../eventa-api/docker-compose.yml`) with migrations applied — each publishes to its own isolated
   `*.test` exchange/queue, and `jest-e2e.json` pins `maxWorkers: 1` so they do not collide.
 - Prettier: **single quotes, trailing commas everywhere**.
@@ -137,12 +139,13 @@ every commit and PR.
 Follow the development guide when implementing. The rules that are easy to get wrong:
 
 - **Modules mirror the api's domain names, but are handler-shaped.** `src/modules/<domain>/` uses the same
-  bounded-context names as `eventa-api`: today `access`, `account-deletion`, `auth`, `auth-password`,
-  `auth-signup`, `auth-two-factor`, `event-program`, `events`, `invitations`, `payments`, `registration`,
-  `users`, `waitlist`, plus the job modules `order-expiry`, `scheduled-announcements`,
-  `scheduled-messages`. (The development guide's `engagement/`, `meetings/` and `insights/` worker folders
-  do **not** exist here, and no projection builder has been written yet.) Each event gets a handler + a zod
-  schema, e.g. `registration/registration-confirmed.handler.ts` + `registration-confirmed.schema.ts`.
+  bounded-context names as `eventa-api`: today `access`, `account-deletion`, `auth`,
+  `auth-booking-signup`, `auth-password`, `auth-signup`, `auth-two-factor`, `event-program`, `events`,
+  `invitations`, `payments`, `registration`, `users`, `waitlist`, plus the job modules `order-expiry`,
+  `scheduled-announcements`, `scheduled-messages`. (The development guide's `engagement/`, `meetings/`
+  and `insights/` worker folders do **not** exist here, and no projection builder has been written
+  yet.) Each event gets a handler + a zod schema, e.g. `registration/registration-confirmed.handler.ts` +
+  `registration-confirmed.schema.ts`.
   **Do not** structure folders by capability (`handlers/`, `email/`) — channel clients are **injected**:
   `EmailProvider` from `src/common/email/`, `SmsProvider` from `src/common/sms/` (there is no
   `src/common/providers/` folder — that is the docs' name for a layout that was never built — and no
@@ -200,7 +203,8 @@ this is the enforced summary, tailored to the consumer service. (Stack-adapted �
 **1. Name it after the api module whose events it consumes**, so the two repos line up 1:1. Modules are
 **flat siblings** under `src/modules/` — never nested inside another module — and related ones share a
 **prefix**: `auth` (`identity.signed_in`), `auth-signup` (`identity.email_verification_requested`),
-`auth-password` (`identity.password_reset_requested`), `events` (the `events.*` family). When the api splits
+`auth-booking-signup` (`identity.booking_account_link_requested`), `auth-password`
+(`identity.password_reset_requested`), `events` (the `events.*` family). When the api splits
 a context, split the matching consumer here too.
 
 **2. Lay it out like this** — `<name>.module.ts` plus one **descriptively named** handler per routing key
