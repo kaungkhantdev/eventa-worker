@@ -4,10 +4,12 @@ import { DRIZZLE, type Database } from '../../db/drizzle.constants';
 import {
   CONFIRMED_ORDER_STATUS,
   events,
+  notificationPreferences,
   orders,
   organizations,
   users,
   type Locale,
+  type NotificationCategory,
 } from '../../db/schema';
 import { asLocale } from '../../common/messaging/locale';
 import { ATTENDEE_PERSONA, PLATFORM_ORG_SLUG } from '../../db/schema/events';
@@ -140,6 +142,46 @@ export class EventRecipientsRepository {
         )
         .map((row) => [row.email, row.locale]),
     );
+  }
+
+  /**
+   * Which of these addresses switched a topic's EMAIL off in their own
+   * settings (US-DISC-12) — `reminder` is "Event reminders" in the attendee
+   * portal. One query for the whole batch, like {@link attendeeLocales}, and
+   * for the same reasons scoped to the attendee account in the PLATFORM
+   * organization: an organizer's own staff row for the same address is not
+   * this buyer's choice.
+   *
+   * Somebody with no account, or who never touched the switch, is absent —
+   * an absent row means on, as eventa-api reports it.
+   *
+   * Answered in the addresses the CALLER passed. Both columns are citext, so
+   * the match ignores case, and a buyer who typed their address with other
+   * capitals at checkout is still the account holder who said no.
+   */
+  async emailOptOuts(
+    emails: string[],
+    category: NotificationCategory,
+  ): Promise<Set<string>> {
+    if (emails.length === 0) return new Set();
+    const rows = await this.db
+      .select({ email: users.email })
+      .from(notificationPreferences)
+      .innerJoin(users, eq(users.id, notificationPreferences.userId))
+      .innerJoin(organizations, eq(organizations.id, users.organizationId))
+      .where(
+        and(
+          inArray(users.email, emails),
+          eq(users.persona, ATTENDEE_PERSONA),
+          eq(organizations.slug, PLATFORM_ORG_SLUG),
+          isNull(users.deletedAt),
+          eq(notificationPreferences.organizationId, users.organizationId),
+          eq(notificationPreferences.category, category),
+          eq(notificationPreferences.emailEnabled, false),
+        ),
+      );
+    const off = new Set(rows.map((row) => row.email.toLowerCase()));
+    return new Set(emails.filter((email) => off.has(email.toLowerCase())));
   }
 
   /**

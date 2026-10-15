@@ -6,6 +6,7 @@ import {
   EVENT_REMINDER_SLUG,
   POST_EVENT_THANKYOU_SLUG,
 } from '../../db/schema/messaging';
+import { REMINDER_PREFERENCE } from '../../db/schema/settings';
 import {
   myEventsUrlFor,
   reminderBody,
@@ -106,6 +107,8 @@ export class ScheduledMessagesService {
             text: reminderBody(notice),
           };
         },
+        // The attendee's own "Event reminders" switch (US-DISC-12).
+        REMINDER_PREFERENCE,
       );
       if (sent) reminded += 1;
     }

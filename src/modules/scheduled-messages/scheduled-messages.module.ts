@@ -9,7 +9,8 @@ import { ScheduledSender } from './scheduled-sender';
 /**
  * Messages sent on a schedule rather than in reply to an event: the reminder a
  * day before, the thank-you a day after (US-MSG-01/08). Reads EventsModule for
- * the attendee list and their languages — the same ones a cancellation uses.
+ * the attendee list and their languages — the same ones a cancellation uses —
+ * and for who switched event reminders off for themselves (US-DISC-12).
  */
 @Module({
   imports: [EventsModule],

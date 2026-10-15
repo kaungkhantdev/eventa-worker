@@ -15,8 +15,8 @@ Calendar invites, read-model/projection builders and search indexing are **not b
 
 **Built and merged to `develop`** (the foundation landed on `feat/worker-foundation`; that branch is
 history): zod-validated config, pino logging, a global Drizzle `DatabaseModule` (typed **mirrors** of the
-17 agreed tables under `src/db/schema/` — audit · orders · payments · seat-holds · events · tickets ·
-messaging · outbox · announcements — **eventa-api owns the schema/migrations**), a Redis
+18 agreed tables under `src/db/schema/` — audit · orders · payments · seat-holds · events · tickets ·
+messaging · outbox · announcements · settings — **eventa-api owns the schema/migrations**), a Redis
 `IdempotencyService`, and the RabbitMQ layer — `RabbitConnection` (**amqplib directly**, not
 `@nestjs/microservices`, to interoperate with the outbox's topic-exchange + routing keys) plus
 `ConsumerService` (asserts a topic exchange + queue + DLX/DLQ + the delay queues of a retry ladder,
@@ -124,12 +124,12 @@ every commit and PR.
   consumer starts on application bootstrap** (`ConsumerService.onApplicationBootstrap`), not via a Nest
   microservice transport.
 - **TypeScript is full `strict`**; `no-explicit-any` is off but the type-aware `no-unsafe-*` rules apply.
-- The **12 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
+- The **13 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
   `attendees-broadcast-interruption`, `cancellation-language`, `cancellation-recipients`, `order-expiry`,
   `payment-receipt`, `scheduled-messages`, `scheduled-announcements`, `event-reminder-switch`,
-  `waitlist-queue`) each need the **shared docker infra up** (`../eventa-api/docker-compose.yml`) with
-  migrations applied — each publishes to its own isolated `*.test` exchange/queue, and `jest-e2e.json`
-  pins `maxWorkers: 1` so they do not collide.
+  `reminder-opt-out`, `waitlist-queue`) each need the **shared docker infra up**
+  (`../eventa-api/docker-compose.yml`) with migrations applied — each publishes to its own isolated
+  `*.test` exchange/queue, and `jest-e2e.json` pins `maxWorkers: 1` so they do not collide.
 - Prettier: **single quotes, trailing commas everywhere**.
 
 ## Target architecture (from the docs — governs code you add; much of it is built already)
