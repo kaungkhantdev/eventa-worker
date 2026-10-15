@@ -9,3 +9,4 @@ export * from './tickets';
 export * from './messaging';
 export * from './outbox';
 export * from './announcements';
+export * from './settings';

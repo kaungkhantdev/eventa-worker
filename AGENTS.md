@@ -15,8 +15,8 @@ Calendar invites, read-model/projection builders and search indexing are **not b
 
 **Built and merged to `develop`** (the foundation landed on `feat/worker-foundation`; that branch is
 history): zod-validated config, pino logging, a global Drizzle `DatabaseModule` (typed **mirrors** of the
-17 agreed tables under `src/db/schema/` — audit · orders · payments · seat-holds · events · tickets ·
-messaging · outbox · announcements — **eventa-api owns the schema/migrations**), a Redis
+18 agreed tables under `src/db/schema/` — audit · orders · payments · seat-holds · events · tickets ·
+messaging · outbox · announcements · settings — **eventa-api owns the schema/migrations**), a Redis
 `IdempotencyService`, and the RabbitMQ layer — `RabbitConnection` (**amqplib directly**, not
 `@nestjs/microservices`, to interoperate with the outbox's topic-exchange + routing keys) plus
 `ConsumerService` (asserts a topic exchange + queue + DLX/DLQ + the delay queues of a retry ladder,
@@ -24,13 +24,13 @@ discovers handlers via `DiscoveryService`, dispatches by routing key with dedupe
 message id — recorded only after the handler succeeds, so an interrupted run is re-processed, not
 skipped — tolerant-reader zod validation, and nack→retry→DLQ).
 
-**Handlers today — all 18 of them, in 16 flat modules under `src/modules/` (this list is exhaustive; keep
+**Handlers today — all 19 of them, in 16 flat modules under `src/modules/` (this list is exhaustive; keep
 it that way):** `access/member-invited` · `account-deletion/account-deletion-requested` ·
 `auth/signed-in` (sign-in audit) · `auth-password/{password-reset,password-changed}` ·
 `auth-signup/email-verification` · `auth-two-factor/two-factor-disabled` ·
 `event-program/session-changed` · `events/{event-published,event-cancelled,attendees-email}` ·
 `invitations/invitation-sent` · `payments/refund-required` ·
-`registration/{registration-confirmed,registration-rejected}` · `users/email-change` ·
+`registration/{registration-confirmed,registration-rejected}` · `users/{email-change,phone-verification}` ·
 `waitlist/{waitlist-offered,waitlist-offer-expired}`. `registration/registration-confirmed` is the
 ticket-bearing confirmation email (US-MSG-01) — the first bilingual EN/TH content, and the first handler
 to read RLS-scoped tables via `db/tenant.ts`. On top of the handlers there are **three clock-driven jobs**
@@ -124,12 +124,12 @@ every commit and PR.
   consumer starts on application bootstrap** (`ConsumerService.onApplicationBootstrap`), not via a Nest
   microservice transport.
 - **TypeScript is full `strict`**; `no-explicit-any` is off but the type-aware `no-unsafe-*` rules apply.
-- The **12 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
+- The **14 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
   `attendees-broadcast-interruption`, `cancellation-language`, `cancellation-recipients`, `order-expiry`,
-  `payment-receipt`, `scheduled-messages`, `scheduled-announcements`, `event-reminder-switch`,
-  `waitlist-queue`) each need the **shared docker infra up** (`../eventa-api/docker-compose.yml`) with
-  migrations applied — each publishes to its own isolated `*.test` exchange/queue, and `jest-e2e.json`
-  pins `maxWorkers: 1` so they do not collide.
+  `payment-receipt`, `phone-verification`, `scheduled-messages`, `scheduled-announcements`,
+  `event-reminder-switch`, `reminder-opt-out`, `waitlist-queue`) each need the **shared docker infra up**
+  (`../eventa-api/docker-compose.yml`) with migrations applied — each publishes to its own isolated
+  `*.test` exchange/queue, and `jest-e2e.json` pins `maxWorkers: 1` so they do not collide.
 - Prettier: **single quotes, trailing commas everywhere**.
 
 ## Target architecture (from the docs — governs code you add; much of it is built already)

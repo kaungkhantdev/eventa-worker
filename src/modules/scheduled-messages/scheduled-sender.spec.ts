@@ -176,4 +176,47 @@ describe('ScheduledSender — sending one scheduled message to an event', () => 
       expect.objectContaining({ locale: 'th' }),
     );
   });
+
+  describe('the attendee’s own switch (US-DISC-12)', () => {
+    beforeEach(() => {
+      recipients.confirmedRecipients.mockResolvedValue([
+        { email: 'anan@x.test', name: 'Anan' },
+        { email: 'malee@x.test', name: 'Malee' },
+      ]);
+      recipients.emailOptOuts = jest
+        .fn()
+        .mockResolvedValue(new Set(['anan@x.test']));
+    });
+
+    const sendHonouring = () =>
+      sender.send(
+        EVENT,
+        'event-reminder',
+        NOW,
+        { event_name: EVENT.eventName },
+        compose,
+        'reminder',
+      );
+
+    it('leaves out somebody who switched that message off, and nobody else', async () => {
+      await sendHonouring();
+      expect(recipients.emailOptOuts).toHaveBeenCalledWith(
+        ['anan@x.test', 'malee@x.test'],
+        'reminder',
+      );
+      expect(sent.map((m) => m.to)).toEqual(['malee@x.test']);
+    });
+
+    it('still finishes the run — leaving somebody out is not missing them', async () => {
+      await sendHonouring();
+      expect(runs.complete).toHaveBeenCalledWith(EVENT, 'event-reminder', NOW);
+    });
+
+    it('asks nobody’s settings for a message no switch of theirs governs', async () => {
+      // The thank-you: no attendee setting names it, so it reaches everybody.
+      await send();
+      expect(recipients.emailOptOuts).not.toHaveBeenCalled();
+      expect(sent.map((m) => m.to)).toEqual(['anan@x.test', 'malee@x.test']);
+    });
+  });
 });

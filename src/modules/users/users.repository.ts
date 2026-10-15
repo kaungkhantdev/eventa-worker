@@ -108,4 +108,32 @@ export class UsersRepository {
       };
     });
   }
+
+  /**
+   * The member's own language, then their workspace's, then English — for the
+   * phone confirmation text, which is addressed by the number on its message
+   * and needs nothing else from this row.
+   *
+   * Deliberately not {@link currentAddress}: that read carries the member's
+   * email, which a text does not need and must never log. This is the same
+   * statement as `AuthTwoFactorRepository.accountLocale`, kept here because
+   * reaching into another module's repository is the thing to avoid.
+   *
+   * A missing row falls back to English; a lookup that cannot be MADE still
+   * rejects, and the caller degrades past it — see
+   * `common/db/refinement-read.ts`.
+   */
+  async accountLocale(organizationId: number, userId: string): Promise<Locale> {
+    return withTenant(this.db, organizationId, async (tx) => {
+      const [row] = await tx
+        .select({ own: users.locale, workspace: organizations.locale })
+        .from(users)
+        .innerJoin(organizations, eq(organizations.id, users.organizationId))
+        .where(
+          and(eq(users.id, userId), eq(users.organizationId, organizationId)),
+        )
+        .limit(1);
+      return asLocale(row?.own ?? row?.workspace);
+    });
+  }
 }
