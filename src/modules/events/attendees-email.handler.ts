@@ -7,13 +7,13 @@ import {
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
 import {
-  EVENTS_ATTENDEES_EMAIL_REQUESTED,
   type AttendeesEmailRequestedEvent,
   attendeesEmailRequestedSchema,
 } from './attendees-email.schema';
 import { ANNOUNCEMENT_KIND } from '../../db/schema/messaging';
 import { deliverToEach } from './broadcast-delivery';
 import { EventRecipientsRepository } from './event-recipients.repository';
+import { EVENTS_ATTENDEES_EMAIL_REQUESTED } from '../../common/constants/events.constants';
 
 /**
  * Handles `events.attendees_email_requested` (US-EVT-14 "Email all attendees").

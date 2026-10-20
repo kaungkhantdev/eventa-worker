@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for the sign-up confirmation email, emitted by eventa-api's outbox. */
-export const IDENTITY_EMAIL_VERIFICATION_REQUESTED =
-  'identity.email_verification_requested';
-
 /** Tolerant reader — unknown fields are stripped; `version` allows overlap. */
 export const emailVerificationRequestedSchema = z.object({
   version: z.number().int().default(1),

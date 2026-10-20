@@ -2,13 +2,11 @@ import { Logger } from '@nestjs/common';
 import { ZodError } from 'zod';
 import { isRetryable } from '../../rabbitmq/failure';
 import type { MessageContext } from '../../rabbitmq/message-handler.interface';
-import {
-  type MeetingCalendarSyncService,
-  OUTCOME,
-} from './meeting-calendar-sync.service';
+import { type MeetingCalendarSyncService } from './meeting-calendar-sync.service';
 import { MeetingSyncRequestedHandler } from './meeting-sync-requested.handler';
 import { MeetingSyncRetry } from './meeting-sync.errors';
 import type { MeetingSyncLock } from './meeting-sync.lock';
+import { OUTCOME } from '../../common/constants/meetings.constants';
 
 const MEETING_ID = '3f2b8c1e-9a4d-4e6f-8b7a-0c1d2e3f4a5b';
 const GUEST = 'somchai@example.test';

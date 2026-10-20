@@ -7,12 +7,13 @@ import {
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
 import {
-  IDENTITY_PASSWORD_RESET_REQUESTED,
   type PasswordResetRequestedEvent,
   passwordResetRequestedSchema,
 } from './password-reset.schema';
-
-const SUBJECT = 'Reset your Eventa password';
+import {
+  IDENTITY_PASSWORD_RESET_REQUESTED,
+  SUBJECT,
+} from '../../common/constants/auth-password.constants';
 
 /**
  * Which workspace the link opens. One address can hold an organizer account in

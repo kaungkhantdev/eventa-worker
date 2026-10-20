@@ -8,11 +8,12 @@ import {
 } from '../../rabbitmq/message-handler.interface';
 import {
   type EmailVerificationRequestedEvent,
-  IDENTITY_EMAIL_VERIFICATION_REQUESTED,
   emailVerificationRequestedSchema,
 } from './email-verification.schema';
-
-const SUBJECT = 'Confirm your email to finish signing up';
+import {
+  IDENTITY_EMAIL_VERIFICATION_REQUESTED,
+  SUBJECT,
+} from '../../common/constants/auth-signup.constants';
 
 /**
  * Handles `identity.email_verification_requested`: renders and sends the sign-up

@@ -1,12 +1,6 @@
 import { z } from 'zod';
 
 /**
- * Routing key for a session that moved on a schedule people are following
- * (US-PROG-03). Mirrors eventa-api's `SESSION_CHANGED`.
- */
-export const PROGRAM_SESSION_CHANGED = 'program.session_changed';
-
-/**
  * A field an organizer may simply not have filled in. Blank is normalised to
  * null at the edge: `Where:  → Hall B` is a personalization field left
  * unfilled, and the notice has one sentence for "not announced yet".

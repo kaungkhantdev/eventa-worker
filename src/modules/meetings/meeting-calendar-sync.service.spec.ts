@@ -16,20 +16,17 @@ import type {
   CalendarConnectionsRepository,
   ConnectionForSync,
 } from './calendar-connections.repository';
-import {
-  MeetingCalendarSyncService,
-  OUTCOME,
-} from './meeting-calendar-sync.service';
-import {
-  MeetingSyncFailure,
-  MeetingSyncRetry,
-  UNREADABLE_CONNECTION_SENTENCE,
-} from './meeting-sync.errors';
+import { MeetingCalendarSyncService } from './meeting-calendar-sync.service';
+import { MeetingSyncFailure, MeetingSyncRetry } from './meeting-sync.errors';
 import type {
   MeetingForSync,
   MeetingsRepository,
   SyncOutcomePatch,
 } from './meetings.repository';
+import {
+  OUTCOME,
+  UNREADABLE_CONNECTION_SENTENCE,
+} from '../../common/constants/meetings.constants';
 
 const ORG = 7;
 const MEETING_ID = '3f2b8c1e-9a4d-4e6f-8b7a-0c1d2e3f4a5b';

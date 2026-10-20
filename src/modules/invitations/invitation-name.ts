@@ -1,4 +1,10 @@
 import { safeDisplayName } from '../../common/messaging/display-name';
+import {
+  COMBINING_MARK,
+  ELEMENT_SEPARATOR,
+  MAX_SPACELESS_NAME_LETTERS,
+  SPACELESS_SCRIPT,
+} from '../../common/constants/invitations.constants';
 
 /**
  * The name an invitation may greet by — `safeDisplayName`, plus the one bound
@@ -85,56 +91,6 @@ import { safeDisplayName } from '../../common/messaging/display-name';
  */
 
 /**
- * How many LETTERS one element of a name may hold, when the script gives
- * `split(' ')` nothing to count.
- *
- * Letters, not code points. In Thai a code point is an artifact of the
- * encoding rather than a measure of the name: every vowel and tone mark is
- * its own, so two surnames of equal length differ by half depending on how
- * heavily they are marked — and the unit Thailand's Person Name Act legislates
- * in is letters. Counting code points penalised the marked names, and at 20 it
- * declined a real grandfathered surname and greeted that person "Hello,".
- *
- * Measured against real names rather than against the lure — a cap set to
- * exclude an attack is a cap that excludes somebody's surname next year:
- *
- *   ศรีวรรณวิทย์ไพศาล        17 code points, 14 letters  (longest in evidence)
- *   ศรีวรรณวิทย์ไพศาลมงคล    21 code points, 18 letters  (grandfathered compound)
- *   the 48-code-point lure   48 code points, 35 letters
- *
- * The Act caps a NEWLY registered surname at ten letters and grandfathers the
- * longer compounds, which reach 18 in evidence. 24 clears those with room and
- * still refuses a sentence at nearly twice that.
- *
- * It is deliberately NOT derived from `MAX_DISPLAY_NAME_LENGTH`: that cap is
- * the length of a whole greeting's worth of name, and this is the length of one
- * part of one name. Tying them would mean a two-element Thai name could not use
- * the budget a three-element one gets.
- */
-export const MAX_SPACELESS_NAME_LETTERS = 24;
-
-/**
- * Scripts written without spaces between words, so `split(' ')` cannot count
- * their words.
- *
- * Enumerated because Unicode has no property for it. The six languages named
- * in the finding give Thai, Lao, Khmer, Myanmar, Han (Chinese and Japanese
- * kanji) and the two Japanese syllabaries; Tai Tham is the Lanna script of
- * northern Thailand and belongs with them in this market. Hangul and the
- * abugidas of India are absent on purpose — modern Korean, Hindi and Bengali
- * all space their words, so the shared word cap already reads them.
- */
-const SPACELESS_SCRIPT =
-  /[\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Tai_Tham}]/u;
-
-/**
- * What separates one element of a name from the next. A single space, because
- * `safeDisplayName` has already collapsed every whitespace class and every
- * invisible character into exactly that — which is why it runs first.
- */
-const ELEMENT_SEPARATOR = ' ';
-
-/**
  * The name to greet an invitee with, or null when the invitation should greet
  * without one. Never throws, and never withholds a mail: see the file
  * docstring for what it does and does not decide.
@@ -168,6 +124,3 @@ function isNameElement(element: string): boolean {
 function letterCount(element: string): number {
   return Array.from(element).filter((ch) => !COMBINING_MARK.test(ch)).length;
 }
-
-/** Unicode nonspacing marks — Thai vowel signs and tone marks among them. */
-const COMBINING_MARK = /\p{Mn}/u;

@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key eventa-api's `meeting-sync.event.ts` writes to the outbox. */
-export const MEETING_SYNC_REQUESTED = 'meeting.sync_requested';
-
 /**
  * Tolerant reader for `meeting.sync_requested` — only what the sync needs.
  *

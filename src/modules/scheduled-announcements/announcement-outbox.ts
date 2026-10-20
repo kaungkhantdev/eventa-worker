@@ -1,4 +1,4 @@
-import { EVENTS_ATTENDEES_EMAIL_REQUESTED } from '../events/attendees-email.schema';
+import { EVENTS_ATTENDEES_EMAIL_REQUESTED } from '../../common/constants/events.constants';
 
 /** A due announcement, as the sweep hands it to the outbox. */
 export interface DueAnnouncementSend {

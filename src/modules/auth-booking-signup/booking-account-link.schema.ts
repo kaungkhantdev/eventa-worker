@@ -3,13 +3,6 @@ import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import { localeEnum } from '../../db/schema/events';
 
 /**
- * Routing key for the link that claims an account from a booking (US-DISC-15),
- * emitted by eventa-api's outbox when a guest asks to keep their tickets.
- */
-export const IDENTITY_BOOKING_ACCOUNT_LINK_REQUESTED =
-  'identity.booking_account_link_requested';
-
-/**
  * Tolerant reader — unknown fields are stripped; `version` allows overlap.
  *
  * `claimUrl` carries the claim token in the clear, the way

@@ -13,7 +13,6 @@ process.env.REDIS_URL ??= 'redis://localhost:6379';
 process.env.RABBITMQ_EXCHANGE = 'eventa.events.meetings.test';
 process.env.RABBITMQ_QUEUE = 'eventa.worker.meetings.test';
 process.env.CALENDAR_PROVIDER = 'fake';
-
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as amqp from 'amqplib';
@@ -21,7 +20,7 @@ import Redis from 'ioredis';
 import { Pool } from 'pg';
 import { AppModule } from '../src/app.module';
 import { SecretCipher } from '../src/common/crypto/secret-cipher';
-import { MEETING_SYNC_REQUESTED } from '../src/modules/meetings/meeting-sync-requested.schema';
+import { MEETING_SYNC_REQUESTED } from '../src/common/constants/meetings.constants';
 
 type Connection = Awaited<ReturnType<typeof amqp.connect>>;
 type Channel = Awaited<ReturnType<Connection['createChannel']>>;

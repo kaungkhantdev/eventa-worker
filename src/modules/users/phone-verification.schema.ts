@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for the "here is your confirmation code" text, emitted by eventa-api. */
-export const IDENTITY_PHONE_VERIFICATION_REQUESTED =
-  'identity.phone_verification_requested';
-
 /**
  * Tolerant reader — unknown fields are stripped; `version` allows overlap.
  *

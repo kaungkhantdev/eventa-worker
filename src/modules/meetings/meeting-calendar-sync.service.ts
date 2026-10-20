@@ -18,40 +18,21 @@ import {
   CalendarConnectionsRepository,
   type ConnectionForSync,
 } from './calendar-connections.repository';
-import {
-  MeetingSyncFailure,
-  MeetingSyncRetry,
-  UNREADABLE_CONNECTION_SENTENCE,
-} from './meeting-sync.errors';
+import { MeetingSyncFailure, MeetingSyncRetry } from './meeting-sync.errors';
 import {
   type MeetingForSync,
   MeetingsRepository,
   type SyncOutcomePatch,
 } from './meetings.repository';
-
-/** How one delivery ended — logged, never shown to anybody. */
-export const OUTCOME = {
-  /** The meeting no longer exists, or was deleted. Nothing to do. */
-  gone: 'gone',
-  /** A redelivery, or a message a newer one already settled. */
-  already_synced: 'already_synced',
-  not_connected: 'not_connected',
-  /** Google refused the grant; the connection is now marked expired. */
-  connection_expired: 'connection_expired',
-  synced: 'synced',
-  /** The organizer changed the meeting mid-sync; the newer message owns it. */
-  superseded: 'superseded',
-  failed: 'failed',
-  /** Google has not minted the Meet link yet; the message comes back. */
-  link_pending: 'link_pending',
-} as const;
+import {
+  HH_MM,
+  OUTCOME,
+  UNREADABLE_CONNECTION_SENTENCE,
+} from '../../common/constants/meetings.constants';
 
 export type SyncOutcome = (typeof OUTCOME)[keyof typeof OUTCOME];
 
 const SYNCED: SyncOutcomePatch = { syncStatus: 'synced', syncError: null };
-
-/** Seconds are not part of a meeting time; the calendar gets ':00'. */
-const HH_MM = 5;
 
 /**
  * Makes one meeting's Google Calendar event match its row (US-MTG-04..08):

@@ -187,7 +187,7 @@ Follow the development guide when implementing. The rules that are easy to get w
   `EmailProvider` from `src/common/email/`, `SmsProvider` from `src/common/sms/`, `CalendarProvider`
   from `src/common/calendar/` (there is no `src/common/providers/` folder — that is the docs' name for a
   layout that was never built). Cross-cutting code lives in
-  `src/common/{calendar,crypto,db,email,idempotency,logging,messaging,sms,time}`; tenant scoping is the
+  `src/common/{calendar,constants,crypto,db,email,idempotency,logging,messaging,sms,time}`; tenant scoping is the
   `src/db/tenant.ts` helper and metrics are `src/metrics/` — there is no `common/tenancy/` or
   `common/telemetry/`.
 - **Every handler is idempotent.** Messages can be redelivered; dedupe on the event/message id so a repeat
@@ -289,7 +289,9 @@ the DI graph and the dedupe actually work.
 - **Idempotent handlers** — dedupe on event/message id; a redelivery produces no second effect.
 - **Custom, meaningful exceptions**; **enums over magic strings**, **constants over magic numbers**.
 - **No hard-coding** — never inline a literal that has a canonical home. Magic strings → enums / union
-  constants; magic numbers (retry counts, TTLs, prefetch, backoff) → module-level `const`; queue,
+  constants; magic numbers (retry counts, TTLs, prefetch, backoff) and fixed messages → a named constant in
+  `src/common/constants/<module>.constants.ts` (one file per module; a constant that needs its module's own
+  types or functions stays beside them — `common` never imports from `src/modules`); queue,
   exchange, routing-key and DLQ names, Redis key prefixes, URLs, credentials → `ConfigService` (zod `Env`)
   or a shared constants module, **never** a bare string or `process.env` in handler code. Event **routing
   keys and payload field names come from the shared contract** (the producer's `*.event.ts` / the zod

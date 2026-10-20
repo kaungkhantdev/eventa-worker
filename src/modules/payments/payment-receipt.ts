@@ -2,6 +2,11 @@ import { greeting } from '../../common/messaging/greeting';
 import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 import { formatMoney } from '../registration/confirmation-email';
+import {
+  BCP47,
+  PERCENT,
+  RECEIPT_TIMEZONE,
+} from '../../common/constants/payments.constants';
 
 /**
  * The emailed receipt for a paid registration, in English and Thai (US-SET-10:
@@ -15,11 +20,6 @@ import { formatMoney } from '../registration/confirmation-email';
  * Only the opening is the organizer's to reword. The seller, the lines, the
  * VAT and the total are what makes it a receipt, so they are always Eventa's.
  */
-
-/** Receipts are dated in Thailand, whatever the reader's own clock says. */
-const RECEIPT_TIMEZONE = 'Asia/Bangkok';
-const PERCENT = 100;
-const BCP47: Record<Locale, string> = { en: 'en-GB', th: 'th-TH' };
 
 export interface ReceiptLine {
   name: string;

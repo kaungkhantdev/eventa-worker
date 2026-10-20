@@ -11,11 +11,11 @@ import {
 } from '../../rabbitmq/message-handler.interface';
 import { phoneVerificationSms } from './phone-verification-sms';
 import {
-  IDENTITY_PHONE_VERIFICATION_REQUESTED,
   type PhoneVerificationRequestedEvent,
   phoneVerificationRequestedSchema,
 } from './phone-verification.schema';
 import { UsersRepository } from './users.repository';
+import { IDENTITY_PHONE_VERIFICATION_REQUESTED } from '../../common/constants/users.constants';
 
 /**
  * Handles `identity.phone_verification_requested` (US-DISC-11 AC3): texts the

@@ -15,7 +15,6 @@ import {
 import { deliverToEach } from './broadcast-delivery';
 import { cancellationBody, cancellationSubject } from './cancellation-notice';
 import {
-  EVENTS_CANCELLED,
   type EventCancelledEvent,
   eventCancelledSchema,
 } from './event-cancelled.schema';
@@ -23,6 +22,7 @@ import {
   type CancellationRecipient,
   EventRecipientsRepository,
 } from './event-recipients.repository';
+import { EVENTS_CANCELLED } from '../../common/constants/events.constants';
 
 /**
  * Handles `events.cancelled` (US-EVT-08). Messages every confirmed attendee —

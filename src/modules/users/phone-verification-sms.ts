@@ -1,5 +1,6 @@
 import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import type { Locale } from '../../db/schema/events';
+import { BCP47, NOTICE_TIMEZONE } from '../../common/constants/users.constants';
 
 /**
  * The text that carries the code confirming a new phone number (US-DISC-11
@@ -9,12 +10,6 @@ import type { Locale } from '../../db/schema/events';
  * free text the requester wrote, and no link. Eventa's own words, in English
  * and Thai.
  */
-
-/** The code's expiry is a wall clock in Thailand, as every notice here is. */
-const NOTICE_TIMEZONE = 'Asia/Bangkok';
-
-/** BCP-47 tag per locale. */
-const BCP47: Record<Locale, string> = { en: 'en-GB', th: 'th-TH' };
 
 /** One language's text. Declared so EN and TH must stay the same shape. */
 interface SmsCopy {

@@ -1,5 +1,9 @@
 import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import type { Locale } from '../../db/schema/events';
+import {
+  BCP47,
+  NOTICE_TIMEZONE,
+} from '../../common/constants/auth-password.constants';
 
 /**
  * The "your password was changed" confirmation, in English and Thai
@@ -61,17 +65,6 @@ import type { Locale } from '../../db/schema/events';
  * digits into `tel:` — so the rule is an allow-list of what a name may contain
  * rather than a list of the link shapes anybody has thought of so far.
  */
-
-/**
- * Security notices are stamped in Thailand's time, whatever the reader's own
- * clock says — the same rule receipts and the two-factor alert follow. The
- * timestamp crosses the bus in UTC; this is the only place it becomes a wall
- * clock.
- */
-const NOTICE_TIMEZONE = 'Asia/Bangkok';
-
-/** BCP-47 tag per locale; `th-TH` also gives a Thai reader the Buddhist era. */
-const BCP47: Record<Locale, string> = { en: 'en-GB', th: 'th-TH' };
 
 export interface PasswordChangedNotice {
   /**

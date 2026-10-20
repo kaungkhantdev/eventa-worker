@@ -1,11 +1,3 @@
-/**
- * The `sync_error` for a connection this worker cannot decrypt — what a
- * SECRET_ENCRYPTION_KEY that is not eventa-api's looks like from a card.
- * Fixed, like the calendar's own sentences: it is shown to the organizer.
- */
-export const UNREADABLE_CONNECTION_SENTENCE =
-  'The Google Calendar connection could not be read.';
-
 /** Why a sync is put off rather than failed. */
 export type MeetingSyncRetryReason =
   /** Another delivery for the same meeting holds the lock right now. */

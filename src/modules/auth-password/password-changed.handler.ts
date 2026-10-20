@@ -14,10 +14,10 @@ import {
   passwordChangedSubject,
 } from './password-changed.notice';
 import {
-  IDENTITY_PASSWORD_CHANGED,
   type PasswordChangedEvent,
   passwordChangedSchema,
 } from './password-changed.schema';
+import { IDENTITY_PASSWORD_CHANGED } from '../../common/constants/auth-password.constants';
 
 /**
  * Handles `identity.password_changed` (US-ACC-05 / US-DISC-12 criterion 4):

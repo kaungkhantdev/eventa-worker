@@ -12,9 +12,9 @@ import { closureBody, closureSubject } from './account-deletion-notice';
 import { AccountDeletionRepository } from './account-deletion.repository';
 import {
   type AccountDeletionRequestedEvent,
-  IDENTITY_ACCOUNT_DELETION_REQUESTED,
   accountDeletionRequestedSchema,
 } from './account-deletion-requested.schema';
+import { IDENTITY_ACCOUNT_DELETION_REQUESTED } from '../../common/constants/account-deletion.constants';
 
 /**
  * Handles `identity.account_deletion_requested` (US-DISC-14): tells the account

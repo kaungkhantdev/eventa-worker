@@ -3,18 +3,11 @@ import type Redis from 'ioredis';
 import { randomUUID } from 'node:crypto';
 import { REDIS } from '../../common/idempotency/idempotency.constants';
 import { safeError } from '../../common/logging/safe-error';
-
-const KEY_PREFIX = 'lock:meeting-sync:';
-/**
- * Longer than any one sync can take — a token request, an upsert with one
- * fallback, each capped at ten seconds — and short enough that a worker that
- * died holding it delays the next attempt by a minute at most.
- */
-const LOCK_TTL_MS = 60_000;
-
-/** Delete the key only if it still holds OUR token, atomically. */
-const RELEASE_SCRIPT =
-  "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
+import {
+  KEY_PREFIX,
+  LOCK_TTL_MS,
+  RELEASE_SCRIPT,
+} from '../../common/constants/meetings.constants';
 
 /**
  * One sync per meeting at a time, across every replica.

@@ -9,7 +9,6 @@ process.env.RABBITMQ_URL ??= 'amqp://eventa:eventa@localhost:5672';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 process.env.RABBITMQ_EXCHANGE = 'eventa.events.booking-claim.test';
 process.env.RABBITMQ_QUEUE = 'eventa.worker.booking-claim.test';
-
 import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -21,7 +20,7 @@ import {
   type EmailMessage,
   EmailProvider,
 } from '../src/common/email/email.provider';
-import { IDENTITY_BOOKING_ACCOUNT_LINK_REQUESTED } from '../src/modules/auth-booking-signup/booking-account-link.schema';
+import { IDENTITY_BOOKING_ACCOUNT_LINK_REQUESTED } from '../src/common/constants/auth-booking-signup.constants';
 
 type Connection = Awaited<ReturnType<typeof amqp.connect>>;
 type Channel = Awaited<ReturnType<Connection['createChannel']>>;

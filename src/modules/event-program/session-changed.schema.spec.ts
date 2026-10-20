@@ -1,7 +1,5 @@
-import {
-  PROGRAM_SESSION_CHANGED,
-  sessionChangedSchema,
-} from './session-changed.schema';
+import { sessionChangedSchema } from './session-changed.schema';
+import { PROGRAM_SESSION_CHANGED } from '../../common/constants/event-program.constants';
 
 /** A message eventa-api would really publish for this routing key. */
 function payload(): Record<string, unknown> {

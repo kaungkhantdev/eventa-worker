@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for the "your password was changed" notice from eventa-api. */
-export const IDENTITY_PASSWORD_CHANGED = 'identity.password_changed';
-
 /**
  * Tolerant reader — unknown fields are stripped; `version` allows overlap.
  *

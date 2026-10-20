@@ -13,6 +13,7 @@ import {
 } from '../../db/schema';
 import { asLocale } from '../../common/messaging/locale';
 import { ATTENDEE_PERSONA, PLATFORM_ORG_SLUG } from '../../db/schema/events';
+import { PENDING_ORDER_STATUS } from '../../common/constants/events.constants';
 
 /** When neither the event nor the workspace names a language. */
 
@@ -30,9 +31,6 @@ export interface CancellationRecipient extends Recipient {
    */
   awaitingApproval: boolean;
 }
-
-/** Pending, with its decision asked for, is waiting on the organizer. */
-const PENDING_ORDER_STATUS = 'pending';
 
 /**
  * Reads the confirmed-attendee recipient set for an event. eventa-api owns the

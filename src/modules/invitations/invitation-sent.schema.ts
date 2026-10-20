@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key eventa-api publishes when an organizer invites someone. */
-export const INVITATION_SENT = 'invitation.sent';
-
 /**
  * Tolerant reader for `invitation.sent` (US-REG-06). Only the fields this
  * handler actually uses are required, so a producer that adds one does not

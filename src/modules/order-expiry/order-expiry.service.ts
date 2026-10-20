@@ -3,8 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Clock } from '../../common/time/clock';
 import type { Env } from '../../config/env.validation';
 import { OrderExpiryRepository } from './order-expiry.repository';
-
-const MS_PER_HOUR = 60 * 60 * 1000;
+import { MS_PER_HOUR } from '../../common/constants/order-expiry.constants';
 
 /**
  * Closes the orders nobody paid for (US-DISC-05).

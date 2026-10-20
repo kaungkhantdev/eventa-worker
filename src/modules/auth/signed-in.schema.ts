@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for the sign-in event emitted by eventa-api's outbox. */
-export const IDENTITY_SIGNED_IN = 'identity.signed_in';
-
 /**
  * The shape this consumer expects. Tolerant reader — unknown fields are stripped,
  * not rejected; `version` allows producer/consumer overlap across changes.

@@ -5,16 +5,18 @@ import {
 } from '../../rabbitmq/message-handler.interface';
 import {
   MeetingCalendarSyncService,
-  OUTCOME,
   type SyncOutcome,
 } from './meeting-calendar-sync.service';
 import {
-  MEETING_SYNC_REQUESTED,
   type MeetingSyncRequestedEvent,
   meetingSyncRequestedSchema,
 } from './meeting-sync-requested.schema';
 import { MeetingSyncRetry } from './meeting-sync.errors';
 import { MeetingSyncLock } from './meeting-sync.lock';
+import {
+  MEETING_SYNC_REQUESTED,
+  OUTCOME,
+} from '../../common/constants/meetings.constants';
 
 /**
  * Handles `meeting.sync_requested` (US-MTG-04..08): makes the meeting's Google

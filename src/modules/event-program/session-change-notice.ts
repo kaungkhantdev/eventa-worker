@@ -1,6 +1,7 @@
 import { greeting } from '../../common/messaging/greeting';
 import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
+import { TO } from '../../common/constants/event-program.constants';
 
 /**
  * The "a session you have on your schedule has moved" notice, in English and
@@ -74,9 +75,6 @@ const COPY: Record<Locale, Copy> = {
       `บัตรของคุณยังใช้ได้ตามปกติ และรายละเอียดอื่นของงาน ${event} ไม่มีการเปลี่ยนแปลง`,
   },
 };
-
-/** ` → ` — the before and the after, in the order they happened. */
-const TO = ' → ';
 
 export function sessionChangeSubject(notice: SessionChangeNotice): string {
   return inlineText(COPY[notice.locale].subject(notice.sessionTitle));

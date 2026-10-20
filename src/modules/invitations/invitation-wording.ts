@@ -1,5 +1,10 @@
 import type { ChosenWording } from '../../common/messaging/merge-fields';
 import { fill } from '../../common/messaging/merge-fields';
+import {
+  EVENT_NAME_FIELD,
+  FIRST_NAME_FIELD,
+  FIRST_NAME_PLACEHOLDER,
+} from '../../common/constants/invitations.constants';
 
 /**
  * The organizer's own subject and opening, merge-fields filled — or nulls
@@ -30,28 +35,6 @@ import { fill } from '../../common/messaging/merge-fields';
  * It is decided PER FIELD, like `pickWording` above it: an organizer whose
  * subject names the reader and whose body does not keeps the body.
  */
-
-/**
- * The merge fields this message offers, per eventa-api's template catalog,
- * which refuses the rest on save.
- *
- * Module-private on purpose. The canonical home for these names is the
- * producer's catalog and there is no shared one here yet — eight handlers in
- * this service still spell them as bare literals — so naming them is a local
- * improvement, not a shared constant other modules should reach in for. If a
- * shared home is ever wanted it belongs beside `fill`, in `common/messaging`.
- */
-const FIRST_NAME_FIELD = 'first_name';
-const EVENT_NAME_FIELD = 'event_name';
-
-/**
- * `{{ first_name }}`, in the spellings `merge-fields` accepts — braces, any
- * inner whitespace. Built from {@link FIRST_NAME_FIELD} rather than re-typed,
- * so the name of the field has one home.
- */
-const FIRST_NAME_PLACEHOLDER = new RegExp(
-  `\\{\\{\\s*${FIRST_NAME_FIELD}\\s*\\}\\}`,
-);
 
 export interface InvitationReader {
   /** Already through `invitationGreetingName`; null → no name to print. */

@@ -15,10 +15,10 @@ import {
   payUrlFor,
   waitlistOfferedEvent,
 } from '../waitlist/waitlist-events';
-
-/** An allocation of 0 means unlimited — mirrors eventa-api's `TicketingPolicy`. */
-const UNLIMITED = 0;
-const WAITLISTED = 'waitlisted' as const;
+import {
+  UNLIMITED,
+  WAITLISTED,
+} from '../../common/constants/order-expiry.constants';
 
 /** An offer the sweep just closed, with the ticket it was for. */
 export interface LapsedOffer extends WaitlistEntryRef {

@@ -27,7 +27,6 @@ import {
 } from './confirmation-email';
 import { confirmationSms } from './confirmation-sms';
 import {
-  REGISTRATION_CONFIRMED,
   type RegistrationConfirmedEvent,
   registrationConfirmedSchema,
 } from './registration-confirmed.schema';
@@ -36,16 +35,13 @@ import type {
   ConfirmationSource,
 } from './registration.repository';
 import { RegistrationRepository } from './registration.repository';
-
-const DEFAULT_CURRENCY = 'THB';
-
-/**
- * The three messages one confirmed order can owe, each recorded once it is
- * done — two emails and, for an attendee who gave a mobile, a text.
- */
-const CONFIRMATION_PART = 'confirmation';
-const RECEIPT_PART = 'receipt';
-const SMS_PART = 'sms';
+import {
+  CONFIRMATION_PART,
+  DEFAULT_CURRENCY,
+  RECEIPT_PART,
+  REGISTRATION_CONFIRMED,
+  SMS_PART,
+} from '../../common/constants/registration.constants';
 
 /**
  * Handles `registration.confirmed` (US-MSG-01): the email that carries the

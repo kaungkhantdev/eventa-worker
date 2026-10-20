@@ -4,6 +4,7 @@ import { inlineText } from '../../common/messaging/inline-text';
 import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import type { Locale } from '../../db/schema/events';
 import { formatWhen } from '../registration/confirmation-email';
+import { NOTICE_TIMEZONE } from '../../common/constants/auth-booking-signup.constants';
 
 /**
  * The mail that lets a guest turn a booking into an account (US-DISC-15), in
@@ -35,9 +36,6 @@ import { formatWhen } from '../registration/confirmation-email';
  * the ticket confirmation, so it is kept and only flattened onto its line with
  * `inlineText`. See `common/messaging/inline-text.ts` for why the two differ.
  */
-
-/** Account mail has no event timezone behind its deadline; it is Thailand's. */
-const NOTICE_TIMEZONE = 'Asia/Bangkok';
 
 export interface BookingAccountLinkNotice {
   locale: Locale;

@@ -1,7 +1,5 @@
-import {
-  MAX_SPACELESS_NAME_LETTERS,
-  invitationGreetingName,
-} from './invitation-name';
+import { invitationGreetingName } from './invitation-name';
+import { MAX_SPACELESS_NAME_LETTERS } from '../../common/constants/invitations.constants';
 
 /**
  * The names this rule exists to keep. Every one of them has to go on passing:

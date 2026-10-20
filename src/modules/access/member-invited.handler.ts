@@ -8,10 +8,10 @@ import {
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
 import {
-  IDENTITY_MEMBER_INVITED,
   type MemberInvitedEvent,
   memberInvitedSchema,
 } from './member-invited.schema';
+import { IDENTITY_MEMBER_INVITED } from '../../common/constants/access.constants';
 
 /**
  * The join link a teammate is invited with (US-SET-11).

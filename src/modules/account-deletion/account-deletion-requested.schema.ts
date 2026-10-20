@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for the account-closure notice, emitted by eventa-api's outbox. */
-export const IDENTITY_ACCOUNT_DELETION_REQUESTED =
-  'identity.account_deletion_requested';
-
 /**
  * Tolerant reader — unknown fields are stripped; `version` allows overlap.
  *

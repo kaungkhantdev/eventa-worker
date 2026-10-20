@@ -15,12 +15,13 @@ import {
   organizerSubject,
 } from './refund-notice';
 import {
-  PAYMENT_REFUND_REQUIRED,
   type RefundRequiredEvent,
   refundRequiredSchema,
 } from './refund-required.schema';
-
-const DEFAULT_CURRENCY = 'THB';
+import {
+  DEFAULT_CURRENCY,
+  PAYMENT_REFUND_REQUIRED,
+} from '../../common/constants/payments.constants';
 
 /**
  * Handles `payment.refund_required` — money that arrived for a registration

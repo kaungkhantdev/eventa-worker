@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for the "confirm your new email" message, emitted by eventa-api. */
-export const IDENTITY_EMAIL_CHANGE_REQUESTED =
-  'identity.email_change_requested';
-
 /**
  * Tolerant reader — unknown fields are stripped; `version` allows overlap.
  *

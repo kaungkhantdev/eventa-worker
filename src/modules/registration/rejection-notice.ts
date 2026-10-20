@@ -2,6 +2,11 @@ import { greeting } from '../../common/messaging/greeting';
 import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
 import { formatMoney } from './confirmation-email';
+import {
+  CAPTURED_PAYMENT_STATUS,
+  REFUNDED_PAYMENT_STATUS,
+  UNCAPTURED_PAYMENT_STATUSES,
+} from '../../common/constants/registration.constants';
 
 /**
  * The rejection notice, in English and Thai (US-REG-02): an organizer turned a
@@ -72,13 +77,6 @@ export interface RejectionNotice {
   /** The organizer's opening, already filled. Null or absent: use Eventa's. */
   opening?: string | null;
 }
-
-/** Money captured and still held by the platform — a refund is owed. */
-const CAPTURED_PAYMENT_STATUS = 'paid';
-/** The refund has landed, so the attendee can be told it has. */
-const REFUNDED_PAYMENT_STATUS = 'refunded';
-/** Nothing was ever captured: no money of theirs is anywhere. */
-const UNCAPTURED_PAYMENT_STATUSES: readonly string[] = ['pending', 'failed'];
 
 /**
  * Which money line this rejection earns.

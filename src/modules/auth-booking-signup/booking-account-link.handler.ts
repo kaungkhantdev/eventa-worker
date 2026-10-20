@@ -10,9 +10,9 @@ import {
 } from './booking-account-link.notice';
 import {
   type BookingAccountLinkRequestedEvent,
-  IDENTITY_BOOKING_ACCOUNT_LINK_REQUESTED,
   bookingAccountLinkRequestedSchema,
 } from './booking-account-link.schema';
+import { IDENTITY_BOOKING_ACCOUNT_LINK_REQUESTED } from '../../common/constants/auth-booking-signup.constants';
 
 /**
  * Handles `identity.booking_account_link_requested` (US-DISC-15): mails the

@@ -1,9 +1,10 @@
 import { greeting } from '../../common/messaging/greeting';
 import { inlineText } from '../../common/messaging/inline-text';
 import type { Locale } from '../../db/schema/events';
-
-/** Satang per baht — money crosses the bus as an integer and is formatted here. */
-const SATANG_PER_BAHT = 100;
+import {
+  BCP47,
+  SATANG_PER_BAHT,
+} from '../../common/constants/registration.constants';
 
 /**
  * What the email says about one ticket. Note what is ABSENT: the QR token.
@@ -85,9 +86,6 @@ const COPY: Record<Locale, Copy> = {
     closing: 'แล้วพบกัน',
   },
 };
-
-/** BCP-47 tag per locale; `th-TH` also gives Thai numerals' grouping and era. */
-const BCP47: Record<Locale, string> = { en: 'en-GB', th: 'th-TH' };
 
 /** ฿1,880.00 — satang formatted once, at the edge, in the reader's language. */
 export function formatMoney(
