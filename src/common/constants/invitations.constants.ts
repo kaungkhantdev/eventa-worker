@@ -75,11 +75,11 @@ export const INVITATION_SENT = 'invitation.sent';
  * The merge fields this message offers, per eventa-api's template catalog,
  * which refuses the rest on save.
  *
- * Module-private on purpose. The canonical home for these names is the
- * producer's catalog and there is no shared one here yet — eight handlers in
- * this service still spell them as bare literals — so naming them is a local
- * improvement, not a shared constant other modules should reach in for. If a
- * shared home is ever wanted it belongs beside `fill`, in `common/messaging`.
+ * The canonical home for these names is the producer's catalog; these mirror
+ * it. They sit in `common/constants` with every module's named constants, so
+ * a handler that still spells `first_name` or `event_name` as a bare literal
+ * can import them from here instead of re-typing them. `invitation-wording.ts`
+ * is their only reader today.
  */
 export const FIRST_NAME_FIELD = 'first_name';
 

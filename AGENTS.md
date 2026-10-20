@@ -251,7 +251,7 @@ a context, split the matching consumer here too.
 src/modules/<name>/
 ├── <name>.module.ts          # wiring only; providers are plain
 ├── <event>.handler.ts        # one per routing key — thin: validate → delegate → ack
-├── <event>.schema.ts         # the zod tolerant reader + the exported routing-key const
+├── <event>.schema.ts         # the zod tolerant reader (routing key in src/common/constants/<name>.constants.ts)
 ├── <name>.repository.ts      # agreed read-model access only (the API owns the schema)
 └── <shared>.ts               # helpers shared by this module's handlers (e.g. broadcast-delivery)
 ```
@@ -292,10 +292,12 @@ the DI graph and the dedupe actually work.
   constants; magic numbers (retry counts, TTLs, prefetch, backoff) and fixed messages → a named constant in
   `src/common/constants/<module>.constants.ts` (one file per module; a constant that needs its module's own
   types or functions stays beside them — `common` never imports from `src/modules`); queue,
-  exchange, routing-key and DLQ names, Redis key prefixes, URLs, credentials → `ConfigService` (zod `Env`)
-  or a shared constants module, **never** a bare string or `process.env` in handler code. Event **routing
-  keys and payload field names come from the shared contract** (the producer's `*.event.ts` / the zod
-  schema), never re-typed literals. If a literal appears twice, or carries meaning, name it once.
+  exchange and DLQ names, Redis key prefixes, URLs, credentials → `ConfigService` (zod `Env`), **never** a
+  bare string or `process.env` in handler code. Event **routing keys** are named constants in
+  `src/common/constants/<module>.constants.ts`, mirroring the producer's constant in eventa-api's
+  `src/common/constants/<module>.constants.ts` (same value, declared here — never imported from the api);
+  **payload field names** come from the consumer's own zod schema. Neither is ever a re-typed literal. If a
+  literal appears twice, or carries meaning, name it once.
 - **Side effects run through injected providers** — the service *is* the side-effect path; keep the core of
   each handler focused and delegate email/SMS/calendar to providers.
 - **Transactions** for multi-row read-model writes.
