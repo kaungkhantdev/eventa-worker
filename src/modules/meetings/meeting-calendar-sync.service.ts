@@ -90,7 +90,9 @@ export class MeetingCalendarSyncService {
     if (!row || row.deletedAt) return OUTCOME.gone;
     if (row.syncStatus === SYNCED_MEETING) return OUTCOME.already_synced;
 
-    const connection = await this.connections.find(organizationId);
+    // The organization the ROW proves, not the payload's on its own: the row
+    // was found by the meeting id and the organization together.
+    const connection = await this.connections.find(row.organizationId);
     const seenCipher = this.usableCipher(connection);
     if (!seenCipher) return this.withoutConnection(row, connection);
     return this.syncWith(row, seenCipher);

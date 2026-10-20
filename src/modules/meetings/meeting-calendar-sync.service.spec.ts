@@ -298,6 +298,7 @@ describe('MeetingCalendarSyncService.reconcile (US-MTG-04..08)', () => {
     it('trades the DECRYPTED refresh token for an access token', async () => {
       await sync.reconcile(ORG, MEETING_ID);
 
+      expect(connections.find).toHaveBeenCalledWith(ORG);
       expect(accessToken).toHaveBeenCalledWith(REFRESH);
     });
   });
