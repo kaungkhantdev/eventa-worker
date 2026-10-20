@@ -140,6 +140,148 @@ describe('validateEnv', () => {
     });
   });
 
+  /**
+   * The meeting invite, its Meet link and its reminder (US-MTG-04/08). Every
+   * one of these is optional: a worker with no Google client must still boot,
+   * send email, and say "not connected" on each meeting rather than refuse.
+   */
+  describe('Google Calendar (US-MTG-04/08)', () => {
+    const DEV_KEY = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
+    const client = {
+      GOOGLE_CALENDAR_CLIENT_ID: 'client-id.apps.googleusercontent.com',
+      GOOGLE_CALENDAR_CLIENT_SECRET: 'client-secret',
+    };
+    /** A 32-byte key that is not the published dev default. */
+    const realKey = Buffer.alloc(32, 7).toString('base64');
+
+    it('boots with no calendar configuration whatsoever', () => {
+      const env = validateEnv(base);
+      expect(env.CALENDAR_PROVIDER).toBeUndefined();
+      expect(env.GOOGLE_CALENDAR_CLIENT_ID).toBeUndefined();
+      expect(env.GOOGLE_CALENDAR_CLIENT_SECRET).toBeUndefined();
+    });
+
+    it('accepts each provider name and refuses any other', () => {
+      for (const name of ['off', 'fake'] as const) {
+        expect(
+          validateEnv({ ...base, CALENDAR_PROVIDER: name }).CALENDAR_PROVIDER,
+        ).toBe(name);
+      }
+      expect(() =>
+        validateEnv({ ...base, CALENDAR_PROVIDER: 'outlook' }),
+      ).toThrow(/CALENDAR_PROVIDER/);
+    });
+
+    it('refuses google without both halves of the OAuth client', () => {
+      expect(() =>
+        validateEnv({ ...base, CALENDAR_PROVIDER: 'google' }),
+      ).toThrow(/GOOGLE_CALENDAR_CLIENT_ID/);
+      expect(() =>
+        validateEnv({
+          ...base,
+          CALENDAR_PROVIDER: 'google',
+          GOOGLE_CALENDAR_CLIENT_ID: client.GOOGLE_CALENDAR_CLIENT_ID,
+        }),
+      ).toThrow(/GOOGLE_CALENDAR_CLIENT_SECRET/);
+    });
+
+    it('accepts google once both halves are given', () => {
+      const env = validateEnv({
+        ...base,
+        CALENDAR_PROVIDER: 'google',
+        ...client,
+      });
+      expect(env.CALENDAR_PROVIDER).toBe('google');
+    });
+
+    it('refuses an empty client id or secret', () => {
+      expect(() =>
+        validateEnv({ ...base, ...client, GOOGLE_CALENDAR_CLIENT_ID: '' }),
+      ).toThrow(/GOOGLE_CALENDAR_CLIENT_ID/);
+      expect(() =>
+        validateEnv({ ...base, ...client, GOOGLE_CALENDAR_CLIENT_SECRET: '' }),
+      ).toThrow(/GOOGLE_CALENDAR_CLIENT_SECRET/);
+    });
+
+    /**
+     * The fake answers every call with a made-up event and Meet link. In
+     * production that is a silent outage: cards read "synced" and no guest is
+     * ever invited — the same reasoning as EMAIL_PROVIDER=log.
+     */
+    it('refuses the fake in production, with the sentence the api uses', () => {
+      expect(() =>
+        validateEnv({ ...production, CALENDAR_PROVIDER: 'fake' }),
+      ).toThrow(
+        'CALENDAR_PROVIDER=fake cannot run in production — no invite would ever reach Google.',
+      );
+    });
+
+    it('allows the fake outside production', () => {
+      expect(() =>
+        validateEnv({ ...base, NODE_ENV: 'test', CALENDAR_PROVIDER: 'fake' }),
+      ).not.toThrow();
+    });
+
+    describe('SECRET_ENCRYPTION_KEY', () => {
+      it("defaults to eventa-api's published dev key", () => {
+        expect(validateEnv(base).SECRET_ENCRYPTION_KEY).toBe(DEV_KEY);
+      });
+
+      it('refuses a key that is not base64 of 32 bytes', () => {
+        expect(() =>
+          validateEnv({
+            ...base,
+            SECRET_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64'),
+          }),
+        ).toThrow('SECRET_ENCRYPTION_KEY must be base64 of 32 bytes');
+      });
+
+      /**
+       * The worker decrypts refresh tokens eventa-api encrypted. In production
+       * the dev default can only mean the variable was never copied across, and
+       * every sync would end "could not be read" — so find out at boot.
+       */
+      it('refuses the dev default in production when Google is the provider', () => {
+        expect(() =>
+          validateEnv({
+            ...production,
+            CALENDAR_PROVIDER: 'google',
+            ...client,
+          }),
+        ).toThrow(
+          "SECRET_ENCRYPTION_KEY must be set to eventa-api's key in production.",
+        );
+      });
+
+      it('refuses it when Google is the provider by derivation, too', () => {
+        // Both client variables set and CALENDAR_PROVIDER unset resolves to
+        // google, so the same refusal must apply.
+        expect(() => validateEnv({ ...production, ...client })).toThrow(
+          /SECRET_ENCRYPTION_KEY/,
+        );
+      });
+
+      it('accepts a real key in production with Google', () => {
+        expect(() =>
+          validateEnv({
+            ...production,
+            ...client,
+            CALENDAR_PROVIDER: 'google',
+            SECRET_ENCRYPTION_KEY: realKey,
+          }),
+        ).not.toThrow();
+      });
+
+      it('lets production keep the dev default while the calendar is off', () => {
+        // Nothing is decrypted, so nothing is at stake.
+        expect(() => validateEnv(production)).not.toThrow();
+        expect(() =>
+          validateEnv({ ...production, ...client, CALENDAR_PROVIDER: 'off' }),
+        ).not.toThrow();
+      });
+    });
+  });
+
   it('applies defaults', () => {
     const env = validateEnv(base);
     expect(env.NODE_ENV).toBe('development');
