@@ -126,10 +126,12 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # TypeScript, no pnpm store, no .env. The files stay owned by root, so the
 # process can read its code and cannot change it.
 FROM base AS prod
-# What the worker's config validation checks production rules against (it
-# refuses EMAIL_PROVIDER=log, for one). eventa-infra sets it too. Leave it:
-# outside production the logger loads pino-pretty, a devDependency this image
-# does not have.
+# The default, so a bare `docker run` gets production's config rules (the
+# worker refuses EMAIL_PROVIDER=log, for one). An environment may set another:
+# eventa-infra's dev overlay sets development. Logs stay JSON either way.
+# Pretty output needs pino-pretty, a devDependency this image does not have,
+# and the logger checks that it is installed before asking pino for it
+# (src/config/logger.config.ts).
 ENV NODE_ENV=production
 COPY package.json ./
 COPY --from=prod-deps /app/node_modules ./node_modules

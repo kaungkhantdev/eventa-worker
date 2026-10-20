@@ -76,7 +76,11 @@ docker build --target dev -t eventa-worker:dev .
 
 The production image runs `node dist/main` directly: no pnpm at run time, no
 TypeScript, no devDependencies. `NODE_ENV=production` is its default, so it
-needs production config: it refuses `EMAIL_PROVIDER=log`, for one. Its
+needs production config: it refuses `EMAIL_PROVIDER=log`, for one. Another
+`NODE_ENV` changes those rules but not the log format: eventa-infra's dev
+overlay runs this image with `NODE_ENV=development`, and its logs are still
+JSON lines on stdout. Pretty output needs `pino-pretty`, a devDependency the
+image leaves out, and the logger uses it only where it is installed. Its
 `HEALTHCHECK` is `GET /health/live` on `PORT` (3100). The comment at the top of
 the `Dockerfile` lists how the image meets each of the twelve factors.
 
