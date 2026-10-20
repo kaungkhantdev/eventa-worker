@@ -57,6 +57,29 @@ $ pnpm run test:e2e
 $ pnpm run test:cov
 ```
 
+## Container image
+
+One `Dockerfile` builds both images. Its last stage is production, so a plain
+build gives the image eventa-infra deploys:
+
+```bash
+# Production: compiled dist/ + production dependencies, runs as uid 1000
+docker build -t eventa-worker .
+
+# Configuration comes from the environment only; no .env is copied into the
+# image. The filesystem can be read-only: the worker writes nothing to it.
+docker run --rm --read-only --env-file <file> -p 3100:3100 eventa-worker
+
+# Watch mode, the target the umbrella compose (../eventa) runs
+docker build --target dev -t eventa-worker:dev .
+```
+
+The production image runs `node dist/main` directly: no pnpm at run time, no
+TypeScript, no devDependencies. `NODE_ENV=production` is its default, so it
+needs production config: it refuses `EMAIL_PROVIDER=log`, for one. Its
+`HEALTHCHECK` is `GET /health/live` on `PORT` (3100). The comment at the top of
+the `Dockerfile` lists how the image meets each of the twelve factors.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
