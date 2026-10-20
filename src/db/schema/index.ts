@@ -10,3 +10,5 @@ export * from './messaging';
 export * from './outbox';
 export * from './announcements';
 export * from './settings';
+export * from './meetings';
+export * from './calendar-connections';

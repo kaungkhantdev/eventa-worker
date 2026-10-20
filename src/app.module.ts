@@ -16,6 +16,7 @@ import { HealthModule } from './health/health.module';
 import { EventsModule } from './modules/events/events.module';
 import { EventProgramModule } from './modules/event-program/event-program.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { MeetingsModule } from './modules/meetings/meetings.module';
 import { ScheduledMessagesModule } from './modules/scheduled-messages/scheduled-messages.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
@@ -65,6 +66,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     PaymentsModule,
     OrderExpiryModule,
     ScheduledAnnouncementsModule,
+    MeetingsModule,
     MetricsModule,
     HealthModule,
   ],
