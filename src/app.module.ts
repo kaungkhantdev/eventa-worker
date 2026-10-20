@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
+import { CalendarModule } from './common/calendar/calendar.module';
 import { EmailModule } from './common/email/email.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { MessagingModule } from './common/messaging/messaging.module';
@@ -43,6 +44,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     DatabaseModule,
     EmailModule,
     SmsModule,
+    CalendarModule,
     IdempotencyModule,
     MessagingModule,
     RabbitmqModule,
