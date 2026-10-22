@@ -1,6 +1,12 @@
 import { safeDisplayName } from '../../common/messaging/display-name';
 import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import type { Locale } from '../../db/schema/events';
+import {
+  BCP47,
+  LINK_LIFETIME_HOURS,
+  NAMELESS_GREETING,
+  NOTICE_TIMEZONE,
+} from '../../common/constants/users.constants';
 
 /**
  * The two messages one email change owes, in English and Thai (US-SET-01).
@@ -66,39 +72,6 @@ import type { Locale } from '../../db/schema/events';
  * Neither SUBJECT interpolates anything. That is deliberate and worth keeping:
  * a newline in a subject is header injection rather than one ugly line.
  */
-
-/**
- * Security alerts are stamped in Thailand's time, whatever the reader's own
- * clock says — the same rule receipts and the two-factor alert follow. The
- * timestamp crosses the bus in UTC; this is the only place it becomes a wall
- * clock.
- */
-const NOTICE_TIMEZONE = 'Asia/Bangkok';
-
-/** BCP-47 tag per locale; `th-TH` also gives a Thai reader the Buddhist era. */
-const BCP47: Record<Locale, string> = { en: 'en-GB', th: 'th-TH' };
-
-/**
- * How long the confirmation link lives, as a number so each language can
- * phrase it.
- *
- * Named rather than inlined because it is duplicated knowledge: the lifetime is
- * the producer's `EMAIL_CHANGE_TTL_SECONDS` (24 hours) and it is not carried on
- * the payload, so if eventa-api ever shortens it this is the one place that
- * silently starts lying and the one place to correct.
- */
-const LINK_LIFETIME_HOURS = 24;
-
-/**
- * The greeting when no name is printed: the heads-up never prints one, and the
- * confirmation falls back to it rather than greeting `Hi ,` when
- * `safeDisplayName` finds nothing usable in a name. No politeness particle, the
- * same as every other Thai greeting in this service.
- */
-const NAMELESS_GREETING: Record<Locale, string> = {
-  en: 'Hello,',
-  th: 'สวัสดี',
-};
 
 export interface EmailChangeConfirmation {
   /**

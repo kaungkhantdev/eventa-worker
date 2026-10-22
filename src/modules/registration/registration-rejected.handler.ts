@@ -17,7 +17,6 @@ import {
   type RejectionNotice,
 } from './rejection-notice';
 import {
-  REGISTRATION_REJECTED,
   type RegistrationRejectedEvent,
   registrationRejectedSchema,
 } from './registration-rejected.schema';
@@ -25,6 +24,7 @@ import {
   RegistrationRepository,
   type RejectionSource,
 } from './registration.repository';
+import { REGISTRATION_REJECTED } from '../../common/constants/registration.constants';
 
 /**
  * Handles `registration.rejected` (US-REG-02): an organizer turned a sign-up

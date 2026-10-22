@@ -1,4 +1,8 @@
 import type { Locale } from '../../db/schema/events';
+import {
+  ELLIPSIS,
+  MAX_EVENT_NAME_CHARS,
+} from '../../common/constants/registration.constants';
 
 /**
  * The confirmation TEXT (US-DISC-06 AC5) — the short companion to the
@@ -21,19 +25,6 @@ import type { Locale } from '../../db/schema/events';
 
 /** One language's text. Declared so EN and TH must stay the same shape. */
 type SmsCopy = (event: string, reference: string, url: string) => string;
-
-/**
- * How much of an event's name a text will carry.
- *
- * Cost, not tidiness. A Thai text is UCS-2 at 70 characters per segment (67
- * once it splits), and an English one holds 160 only while every character is
- * GSM-7 — which an organizer's event name has no obligation to be. Bounding
- * the one field Eventa does not write bounds the bill.
- */
-const MAX_EVENT_NAME_CHARS = 40;
-
-/** ASCII, deliberately: '…' is not GSM-7 and would double the cost. */
-const ELLIPSIS = '...';
 
 /**
  * The English copy is PURE GSM-7 — note the ASCII apostrophe in "you're". One

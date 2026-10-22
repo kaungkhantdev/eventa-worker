@@ -13,7 +13,7 @@ import type { MessageContext } from '../../rabbitmq/message-handler.interface';
 import type { EventRecipientsRepository } from '../events/event-recipients.repository';
 import type { EventProgramRepository } from './event-program.repository';
 import { SessionChangedHandler } from './session-changed.handler';
-import { PROGRAM_SESSION_CHANGED } from './session-changed.schema';
+import { PROGRAM_SESSION_CHANGED } from '../../common/constants/event-program.constants';
 
 const ctx: MessageContext = {
   routingKey: PROGRAM_SESSION_CHANGED,

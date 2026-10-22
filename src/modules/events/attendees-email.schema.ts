@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for an organizer's "Email all attendees" broadcast (US-EVT-14). */
-export const EVENTS_ATTENDEES_EMAIL_REQUESTED =
-  'events.attendees_email_requested';
-
 /**
  * Tolerant reader. The payload deliberately carries no recipient addresses — the
  * worker resolves the confirmed attendees at send time (no PII on the bus).

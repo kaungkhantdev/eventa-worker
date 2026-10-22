@@ -23,7 +23,6 @@ import {
 import { invitationGreetingName } from './invitation-name';
 import { personalisedWording } from './invitation-wording';
 import {
-  INVITATION_SENT,
   type InvitationSentEvent,
   invitationSentSchema,
 } from './invitation-sent.schema';
@@ -32,21 +31,10 @@ import {
   InvitationsRepository,
   stillInvitable,
 } from './invitations.repository';
-
-/**
- * What became of one invitation, for the single log line this handler writes.
- *
- * A named union rather than four bare strings: the line is what an operator
- * reads to find out why somebody was never invited, and a typo in it is a
- * question nobody can answer. `const enum` is not an option — `isolatedModules`
- * is on.
- */
-const OUTCOME = {
-  sent: 'sent',
-  noEvent: 'no-event',
-  cancelled: 'event-cancelled',
-  switchedOff: 'switched-off',
-} as const;
+import {
+  INVITATION_SENT,
+  OUTCOME,
+} from '../../common/constants/invitations.constants';
 
 type Outcome = (typeof OUTCOME)[keyof typeof OUTCOME];
 

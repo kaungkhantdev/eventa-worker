@@ -1,10 +1,8 @@
-/** Routing key eventa-api also publishes when an organizer offers a seat. */
-export const WAITLIST_OFFERED = 'waitlist.offered';
-/** Written only here, when the expiry sweep closes an offer nobody paid for. */
-export const WAITLIST_OFFER_EXPIRED = 'waitlist.offer_expired';
-
-/** The order page the offer is paid on — eventa-api's `ticketsUrlFor`. */
-const ORDER_PATH = '/my/tickets/orders';
+import {
+  ORDER_PATH,
+  WAITLIST_OFFERED,
+  WAITLIST_OFFER_EXPIRED,
+} from '../../common/constants/waitlist.constants';
 
 /** One row for the transactional outbox, as eventa-api's `OutboxEventInput`. */
 export interface OutboxEvent {

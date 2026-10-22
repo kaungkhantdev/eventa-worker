@@ -1,8 +1,6 @@
-import {
-  EVENTS_ATTENDEES_EMAIL_REQUESTED,
-  attendeesEmailRequestedSchema,
-} from '../events/attendees-email.schema';
+import { attendeesEmailRequestedSchema } from '../events/attendees-email.schema';
 import { attendeesEmailRequestedOutbox } from './announcement-outbox';
+import { EVENTS_ATTENDEES_EMAIL_REQUESTED } from '../../common/constants/events.constants';
 
 const NOW = new Date('2026-08-05T03:00:00.000Z');
 const DUE = {

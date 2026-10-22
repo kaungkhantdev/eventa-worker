@@ -6,6 +6,7 @@ import {
   EVENT_REMINDER_SLUG,
   POST_EVENT_THANKYOU_SLUG,
 } from '../../db/schema/messaging';
+import { REMINDER_PREFERENCE } from '../../db/schema/settings';
 import {
   myEventsUrlFor,
   reminderBody,
@@ -21,9 +22,10 @@ import {
   thankYouBody,
   thankYouSubject,
 } from './thank-you-notice';
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
+import {
+  DAY_MS,
+  HOUR_MS,
+} from '../../common/constants/scheduled-messages.constants';
 
 /**
  * The messages this service sends on a schedule rather than in reply to an
@@ -106,6 +108,8 @@ export class ScheduledMessagesService {
             text: reminderBody(notice),
           };
         },
+        // The attendee's own "Event reminders" switch (US-DISC-12).
+        REMINDER_PREFERENCE,
       );
       if (sent) reminded += 1;
     }

@@ -2,9 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ScheduledAnnouncementsService } from './scheduled-announcements.service';
 import { safeError } from '../../common/logging/safe-error';
-
-/** The registered job name, so it can be inspected or stopped via SchedulerRegistry. */
-export const SCHEDULED_ANNOUNCEMENTS_JOB = 'scheduled-announcements';
+import { SCHEDULED_ANNOUNCEMENTS_JOB } from '../../common/constants/scheduled-announcements.constants';
 
 /**
  * Runs the scheduled-announcement sweep (US-MSG-04/05).

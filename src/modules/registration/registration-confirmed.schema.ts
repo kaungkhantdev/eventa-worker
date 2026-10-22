@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key published by eventa-api when an order is placed and paid. */
-export const REGISTRATION_CONFIRMED = 'registration.confirmed';
-
 /**
  * Tolerant reader: only the fields this handler actually uses are required, so
  * a producer that adds one does not dead-letter real traffic. Note what is NOT

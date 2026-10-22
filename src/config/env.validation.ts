@@ -1,4 +1,26 @@
 import { z } from 'zod';
+import {
+  CALENDAR_TRANSPORTS,
+  resolveCalendarTransport,
+} from '../common/calendar/calendar-transport';
+
+/**
+ * eventa-api's published development key — the same literal its own env
+ * declares as the default. Shared so a dev box decrypts what a dev api
+ * encrypted with no configuration at all; refused in production with Google
+ * below, where it can only mean the real key was never copied across.
+ */
+export const DEV_SECRET_ENCRYPTION_KEY =
+  'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
+
+/** AES-256 wants exactly this many bytes of key. */
+const SECRET_KEY_BYTES = 32;
+
+const FAKE_CALENDAR_IN_PRODUCTION =
+  'CALENDAR_PROVIDER=fake cannot run in production — no invite would ever reach Google.';
+
+const DEV_KEY_IN_PRODUCTION =
+  "SECRET_ENCRYPTION_KEY must be set to eventa-api's key in production.";
 
 /** Environment schema — the app refuses to start on an invalid env. */
 export const envSchema = z
@@ -131,6 +153,35 @@ export const envSchema = z
      * rewritten or dropped by the carrier.
      */
     TWILIO_FROM: z.string().min(1).optional(),
+
+    /**
+     * Where meeting invites go (US-MTG-04/08) — or do not.
+     *
+     * OPTIONAL, and resolved in `resolveCalendarTransport` exactly as eventa-api
+     * resolves its own copy: explicit wins, otherwise `google` when both client
+     * variables are set, otherwise `off`. The two services MUST agree. `fake`
+     * mints made-up events and Meet links for a dev box, and is refused in
+     * production below.
+     */
+    CALENDAR_PROVIDER: z.enum(CALENDAR_TRANSPORTS).optional(),
+    /** The OAuth client eventa-api connected with; the worker refreshes with it. */
+    GOOGLE_CALENDAR_CLIENT_ID: z.string().min(1).optional(),
+    /** Never logged, never defaulted. */
+    GOOGLE_CALENDAR_CLIENT_SECRET: z.string().min(1).optional(),
+
+    /**
+     * base64 of exactly 32 bytes — the AES-256-GCM key eventa-api encrypts the
+     * workspace's Google refresh token with. Declared exactly as the api
+     * declares it, and it MUST be the api's value: anything else decrypts
+     * nothing, and every sync ends "could not be read".
+     */
+    SECRET_ENCRYPTION_KEY: z
+      .string()
+      .default(DEV_SECRET_ENCRYPTION_KEY)
+      .refine(
+        (v) => Buffer.from(v, 'base64').length === SECRET_KEY_BYTES,
+        'SECRET_ENCRYPTION_KEY must be base64 of 32 bytes',
+      ),
   })
   // A host that is not named cannot be connected to. Find out at boot rather
   // than when somebody is waiting on a verification link.
@@ -185,6 +236,44 @@ export const envSchema = z
         'SMS_PROVIDER=log cannot run in production — it would log texts as sent that were never sent. Use `off`, or configure a provider.',
       path: ['SMS_PROVIDER'],
     },
+  )
+  // An OAuth client that is not all there cannot refresh a token. Find out at
+  // boot, not on the first meeting somebody schedules.
+  .superRefine((env, ctx) => {
+    if (env.CALENDAR_PROVIDER !== 'google') return;
+    for (const key of [
+      'GOOGLE_CALENDAR_CLIENT_ID',
+      'GOOGLE_CALENDAR_CLIENT_SECRET',
+    ] as const) {
+      if (!env[key])
+        ctx.addIssue({
+          code: 'custom',
+          message: `CALENDAR_PROVIDER=google requires ${key}.`,
+          path: [key],
+        });
+    }
+  })
+  /**
+   * The fake answers every sync with a made-up event and Meet link, so in
+   * production it would mark meetings synced while no guest was ever invited —
+   * the same sentence eventa-api refuses its own fake with.
+   */
+  .refine(
+    (env) => env.NODE_ENV !== 'production' || env.CALENDAR_PROVIDER !== 'fake',
+    { message: FAKE_CALENDAR_IN_PRODUCTION, path: ['CALENDAR_PROVIDER'] },
+  )
+  /**
+   * The worker decrypts refresh tokens eventa-api encrypted. Production on
+   * Google with the dev default can only mean the api's key was never copied
+   * here — and every sync would fail "could not be read". Checked against the
+   * RESOLVED provider, so credentials alone (no explicit name) count too.
+   */
+  .refine(
+    (env) =>
+      env.NODE_ENV !== 'production' ||
+      resolveCalendarTransport(env) !== 'google' ||
+      env.SECRET_ENCRYPTION_KEY !== DEV_SECRET_ENCRYPTION_KEY,
+    { message: DEV_KEY_IN_PRODUCTION, path: ['SECRET_ENCRYPTION_KEY'] },
   );
 
 export type Env = z.infer<typeof envSchema>;

@@ -13,9 +13,7 @@ import {
 } from '../../db/schema';
 import { withTenant, type Tx } from '../../db/tenant';
 import type { ReceiptLine, ReceiptSeller } from './payment-receipt';
-
-/** eventa-api's column default; a row always has one, this is belt and braces. */
-const DEFAULT_VAT_RATE = 0.07;
+import { DEFAULT_VAT_RATE } from '../../common/constants/payments.constants';
 
 /** Everything a receipt prints, as the ledger recorded it. */
 export interface ReceiptSource {

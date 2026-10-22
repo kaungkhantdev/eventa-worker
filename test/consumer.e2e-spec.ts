@@ -7,14 +7,13 @@ process.env.RABBITMQ_URL ??= 'amqp://eventa:eventa@localhost:5672';
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 process.env.RABBITMQ_EXCHANGE = 'eventa.events.test';
 process.env.RABBITMQ_QUEUE = 'eventa.worker.test';
-
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as amqp from 'amqplib';
 import Redis from 'ioredis';
 import { Pool } from 'pg';
 import { AppModule } from '../src/app.module';
-import { IDENTITY_SIGNED_IN } from '../src/modules/auth/signed-in.schema';
+import { IDENTITY_SIGNED_IN } from '../src/common/constants/auth.constants';
 
 type Connection = Awaited<ReturnType<typeof amqp.connect>>;
 type Channel = Awaited<ReturnType<Connection['createChannel']>>;

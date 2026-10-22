@@ -19,19 +19,15 @@ import {
 } from './email-change.notice';
 import {
   type EmailChangeRequestedEvent,
-  IDENTITY_EMAIL_CHANGE_REQUESTED,
   emailChangeRequestedSchema,
 } from './email-change.schema';
 import type { AccountAddress } from './users.repository';
 import { UsersRepository } from './users.repository';
-
-/**
- * The two messages one email change owes, each recorded in the ledger once it
- * is away. Named constants because they are ledger KEYS: renaming one makes
- * every message in flight owe that part again.
- */
-const CONFIRMATION_PART = 'confirmation';
-const HEADS_UP_PART = 'heads-up';
+import {
+  CONFIRMATION_PART,
+  HEADS_UP_PART,
+  IDENTITY_EMAIL_CHANGE_REQUESTED,
+} from '../../common/constants/users.constants';
 
 /**
  * The language a confirmation is written in when the account cannot be read.

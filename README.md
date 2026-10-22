@@ -57,6 +57,33 @@ $ pnpm run test:e2e
 $ pnpm run test:cov
 ```
 
+## Container image
+
+One `Dockerfile` builds both images. Its last stage is production, so a plain
+build gives the image eventa-infra deploys:
+
+```bash
+# Production: compiled dist/ + production dependencies, runs as uid 1000
+docker build -t eventa-worker .
+
+# Configuration comes from the environment only; no .env is copied into the
+# image. The filesystem can be read-only: the worker writes nothing to it.
+docker run --rm --read-only --env-file <file> -p 3100:3100 eventa-worker
+
+# Watch mode, the target the umbrella compose (../eventa) runs
+docker build --target dev -t eventa-worker:dev .
+```
+
+The production image runs `node dist/main` directly: no pnpm at run time, no
+TypeScript, no devDependencies. `NODE_ENV=production` is its default, so it
+needs production config: it refuses `EMAIL_PROVIDER=log`, for one. Another
+`NODE_ENV` changes those rules but not the log format: eventa-infra's dev
+overlay runs this image with `NODE_ENV=development`, and its logs are still
+JSON lines on stdout. Pretty output needs `pino-pretty`, a devDependency the
+image leaves out, and the logger uses it only where it is installed. Its
+`HEALTHCHECK` is `GET /health/live` on `PORT` (3100). The comment at the top of
+the `Dockerfile` lists how the image meets each of the twelve factors.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
@@ -95,4 +122,9 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Proprietary — all rights reserved. This repository is public so that it can be
+read; it is not open-source software, and no right to use, copy, modify or run
+it is granted. See [LICENSE](LICENSE).
+
+NestJS, which this service is built on, remains under its own
+[MIT license](https://github.com/nestjs/nest/blob/master/LICENSE).

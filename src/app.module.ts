@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
+import { CalendarModule } from './common/calendar/calendar.module';
 import { EmailModule } from './common/email/email.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { MessagingModule } from './common/messaging/messaging.module';
@@ -15,6 +16,7 @@ import { HealthModule } from './health/health.module';
 import { EventsModule } from './modules/events/events.module';
 import { EventProgramModule } from './modules/event-program/event-program.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { MeetingsModule } from './modules/meetings/meetings.module';
 import { ScheduledMessagesModule } from './modules/scheduled-messages/scheduled-messages.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { OrderExpiryModule } from './modules/order-expiry/order-expiry.module';
@@ -25,6 +27,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AuthPasswordModule } from './modules/auth-password/auth-password.module';
 import { AccessModule } from './modules/access/access.module';
 import { AuthSignupModule } from './modules/auth-signup/auth-signup.module';
+import { AuthBookingSignupModule } from './modules/auth-booking-signup/auth-booking-signup.module';
 import { AuthTwoFactorModule } from './modules/auth-two-factor/auth-two-factor.module';
 import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
 import { UsersModule } from './modules/users/users.module';
@@ -42,12 +45,14 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     DatabaseModule,
     EmailModule,
     SmsModule,
+    CalendarModule,
     IdempotencyModule,
     MessagingModule,
     RabbitmqModule,
     AuthModule,
     AccessModule,
     AuthSignupModule,
+    AuthBookingSignupModule,
     AuthPasswordModule,
     AuthTwoFactorModule,
     AccountDeletionModule,
@@ -61,6 +66,7 @@ import { RabbitmqModule } from './rabbitmq/rabbitmq.module';
     PaymentsModule,
     OrderExpiryModule,
     ScheduledAnnouncementsModule,
+    MeetingsModule,
     MetricsModule,
     HealthModule,
   ],

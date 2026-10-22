@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { WAITLIST_OFFERED, WAITLIST_OFFER_EXPIRED } from './waitlist-events';
+import {
+  WAITLIST_OFFERED,
+  WAITLIST_OFFER_EXPIRED,
+} from '../../common/constants/waitlist.constants';
 
 export { WAITLIST_OFFERED, WAITLIST_OFFER_EXPIRED };
 

@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key for the "event published" notice, emitted by eventa-api's outbox. */
-export const EVENTS_PUBLISHED = 'events.published';
-
 /** Tolerant reader — unknown fields are stripped; `version` allows overlap. */
 export const eventPublishedSchema = z.object({
   version: z.number().int().default(1),

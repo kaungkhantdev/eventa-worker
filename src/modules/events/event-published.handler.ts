@@ -4,10 +4,10 @@ import {
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
 import {
-  EVENTS_PUBLISHED,
   type EventPublishedEvent,
   eventPublishedSchema,
 } from './event-published.schema';
+import { EVENTS_PUBLISHED } from '../../common/constants/events.constants';
 
 /**
  * Handles `events.published` (US-EVT-07). Binding this key means the publish notice

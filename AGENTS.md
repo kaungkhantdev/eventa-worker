@@ -9,14 +9,16 @@ repository — the single source of truth; tool-specific files import it.
 VAT 7%, PromptPay, Asia/Bangkok, bilingual EN/TH) multi-tenant event platform. It **consumes RabbitMQ
 messages** that `eventa-api` writes to its transactional **outbox** and `eventa-relay` publishes to the
 broker (the api writes the outbox row and never publishes), and performs the **side effects** that must
-never sit on the checkout critical path — today **email and SMS**, plus the clock-driven sweeps below.
-Calendar invites, read-model/projection builders and search indexing are **not built here yet**. It does
+never sit on the checkout critical path — today **email, SMS and meeting calendar invites** (Google
+Calendar, US-MTG-04..08), plus the clock-driven sweeps below. Read-model/projection builders and search
+indexing are **not built here yet**. It does
 **not** own the write model or the checkout/money path — those live in `eventa-api`.
 
 **Built and merged to `develop`** (the foundation landed on `feat/worker-foundation`; that branch is
 history): zod-validated config, pino logging, a global Drizzle `DatabaseModule` (typed **mirrors** of the
-17 agreed tables under `src/db/schema/` — audit · orders · payments · seat-holds · events · tickets ·
-messaging · outbox · announcements — **eventa-api owns the schema/migrations**), a Redis
+20 agreed tables under `src/db/schema/` — audit · orders · payments · seat-holds · events · tickets ·
+messaging · outbox · announcements · settings · meetings · calendar-connections — **eventa-api owns the
+schema/migrations**), a Redis
 `IdempotencyService`, and the RabbitMQ layer — `RabbitConnection` (**amqplib directly**, not
 `@nestjs/microservices`, to interoperate with the outbox's topic-exchange + routing keys) plus
 `ConsumerService` (asserts a topic exchange + queue + DLX/DLQ + the delay queues of a retry ladder,
@@ -24,17 +26,19 @@ discovers handlers via `DiscoveryService`, dispatches by routing key with dedupe
 message id — recorded only after the handler succeeds, so an interrupted run is re-processed, not
 skipped — tolerant-reader zod validation, and nack→retry→DLQ).
 
-**Handlers today — all 18 of them, in 16 flat modules under `src/modules/` (this list is exhaustive; keep
+**Handlers today — all 21 of them, in 18 flat modules under `src/modules/` (this list is exhaustive; keep
 it that way):** `access/member-invited` · `account-deletion/account-deletion-requested` ·
-`auth/signed-in` (sign-in audit) · `auth-password/{password-reset,password-changed}` ·
+`auth/signed-in` (sign-in audit) · `auth-booking-signup/booking-account-link` (US-DISC-15's one-time
+claim link) · `auth-password/{password-reset,password-changed}` ·
 `auth-signup/email-verification` · `auth-two-factor/two-factor-disabled` ·
 `event-program/session-changed` · `events/{event-published,event-cancelled,attendees-email}` ·
-`invitations/invitation-sent` · `payments/refund-required` ·
-`registration/{registration-confirmed,registration-rejected}` · `users/email-change` ·
+`invitations/invitation-sent` · `meetings/meeting-sync-requested` (the Google Calendar invite, Meet
+link and 15-minute reminder, US-MTG-04..08) · `payments/refund-required` ·
+`registration/{registration-confirmed,registration-rejected}` · `users/{email-change,phone-verification}` ·
 `waitlist/{waitlist-offered,waitlist-offer-expired}`. `registration/registration-confirmed` is the
 ticket-bearing confirmation email (US-MSG-01) — the first bilingual EN/TH content, and the first handler
 to read RLS-scoped tables via `db/tenant.ts`. On top of the handlers there are **three clock-driven jobs**
-(see the write exception below). HTTP surface: health probes at `/health/{live,ready}` and the Prometheus
+(see the write exceptions below). HTTP surface: health probes at `/health/{live,ready}` and the Prometheus
 scrape at `/metrics`. Installed stack: `amqplib`, `ioredis`, `drizzle-orm`/`pg`, `@nestjs/config`,
 `@nestjs/schedule`, `zod`, `nestjs-pino`/`pino`, `nodemailer` (SMTP email), `prom-client` (metrics). New
 consumers = a `ValidatedHandler` subclass in a domain module (no wiring needed — DiscoveryService finds
@@ -43,8 +47,8 @@ it).
 The build plan is **not in this repo** — it lives in the sibling SDLC docs at **`../eventa-docs`**. Read
 these before adding anything:
 - [`../eventa-docs/05-development/development-guide.md`](../eventa-docs/05-development/development-guide.md) — §2 (worker layout), §8 (async & messaging in code). **Primary reference.**
-- [`../eventa-docs/04-architecture/software-architecture.md`](../eventa-docs/04-architecture/software-architecture.md) — the SAD; §6.3/§7.2 cover the outbox → RabbitMQ → consumer flow, and §11 holds the ADRs (ADR-13 idempotent consumers, **ADR-14** the scheduled-job write exception).
-- [`../eventa-docs/04-architecture/entities.md`](../eventa-docs/04-architecture/entities.md) — the data model; this service may write only **agreed read-model tables** (api owns the schema), plus the ADR-14 write exception enumerated below.
+- [`../eventa-docs/04-architecture/software-architecture.md`](../eventa-docs/04-architecture/software-architecture.md) — the SAD; §6.3/§7.2 cover the outbox → RabbitMQ → consumer flow, and §11 holds the ADRs (ADR-13 idempotent consumers, **ADR-14** the scheduled-job write exception, **ADR-15** the calendar sync's write-back).
+- [`../eventa-docs/04-architecture/entities.md`](../eventa-docs/04-architecture/entities.md) — the data model; this service may write only **agreed read-model tables** (api owns the schema), plus the ADR-14 and ADR-15 write exceptions enumerated below.
 - [`../eventa-docs/08-maintenance/devops-observability-sre.md`](../eventa-docs/08-maintenance/devops-observability-sre.md) — the SRE signals this service must emit (queue depth, outbox lag, handler success/failure).
 
 Polyrepo siblings: `../eventa-api` (owns the DB schema/migrations and writes the outbox rows this service
@@ -71,6 +75,38 @@ change it here in the same breath. (The append-only logs `audit_events` and `mes
 writes too, but they are this service's own send/audit record, not an aggregate.) The exception is
 enumerated **per table** in [`../eventa-docs/04-architecture/entities.md`](../eventa-docs/04-architecture/entities.md)
 — do not write a table that is not listed there without agreeing it first.
+
+**The second write exception (ADR-15): an external outcome written back onto an api aggregate.** The
+meeting calendar sync (`modules/meetings`, `meeting.sync_requested`) is event-driven, not clock-driven,
+and writes the Google Calendar outcome onto two eventa-api tables:
+- `meetings.{sync_status, sync_error, link}` — **conditional on `updated_at`** being the value the sync
+  read, so an organizer edit made mid-sync wins (0 rows = "superseded"; the newer message finishes the
+  job). It writes `synced`, `failed` and `not_connected`, never `pending` (that is eventa-api's), and
+  **never `version` or `updated_at`**. `sync_error` is only ever one of the fixed sentences in
+  `common/calendar/calendar.provider.ts` (plus "could not be read") — never vendor text, an address or a
+  token.
+- `meetings.external_event_id` — **unconditionally** (eventa-api never writes it): always the meeting id
+  without hyphens, so a retry, a cancel that overtook its create or a resync after a reconnect all name
+  the same Google event.
+- `calendar_connections.{status → 'expired', updated_at}` — when Google refuses the grant
+  (`invalid_grant`, `insufficientPermissions`), and only while the row still holds the token cipher the
+  sync used, so a reconnect that landed mid-sync is never marked expired.
+So `meetings` and `calendar_connections` in `db/schema` are **write** mirrors too: their pgEnum names and
+values must match eventa-api's exactly, and `meetings.updated_at` is mirrored in drizzle's **string**
+mode (a JS Date drops the microseconds the conditional write compares) with no default and no
+`$onUpdate`. The sync reads the current row, never the payload (which carries the guest's address and is
+stripped by the schema), takes a per-meeting Redis lock (`lock:meeting-sync:<id>`) so two deliveries never
+talk to Google at once, and logs ids and the outcome only.
+
+**Calendar config.** `CALENDAR_PROVIDER` (`off` | `fake` | `google`), `GOOGLE_CALENDAR_CLIENT_ID`,
+`GOOGLE_CALENDAR_CLIENT_SECRET` (never logged) and `SECRET_ENCRYPTION_KEY`. The provider is resolved by
+the same rule eventa-api uses (`common/calendar/calendar-transport.ts`: explicit wins, else `google` when
+both client variables are set, else `off`) and **both services must agree** — the worker logs
+`Calendar provider: <name>` once at boot. `SECRET_ENCRYPTION_KEY` must be **eventa-api's value**: the
+worker decrypts the refresh token the api encrypted (`common/crypto/secret-cipher.ts` is a
+byte-compatible copy of the api's), and any other key ends every sync "could not be read" (parked in the
+DLQ). `fake` is refused in production; so is the dev-default key with Google. No `.env` file declares
+these — they are documented in `../eventa-docs` (devops-infrastructure §5).
 
 **Framework docs:** NestJS — https://docs.nestjs.com/ (consult it for microservices/transporters,
 module/provider/DI, and testing patterns rather than guessing).
@@ -124,12 +160,15 @@ every commit and PR.
   consumer starts on application bootstrap** (`ConsumerService.onApplicationBootstrap`), not via a Nest
   microservice transport.
 - **TypeScript is full `strict`**; `no-explicit-any` is off but the type-aware `no-unsafe-*` rules apply.
-- The **12 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
-  `attendees-broadcast-interruption`, `cancellation-language`, `cancellation-recipients`, `order-expiry`,
-  `payment-receipt`, `scheduled-messages`, `scheduled-announcements`, `event-reminder-switch`,
-  `waitlist-queue`) each need the **shared docker infra up** (`../eventa-api/docker-compose.yml`) with
-  migrations applied — each publishes to its own isolated `*.test` exchange/queue, and `jest-e2e.json`
-  pins `maxWorkers: 1` so they do not collide.
+- The **16 e2e specs** in `test/` (`consumer`, `registration-confirmed`, `attendees-broadcast`,
+  `attendees-broadcast-interruption`, `booking-account-link`, `cancellation-language`,
+  `cancellation-recipients`, `order-expiry`, `payment-receipt`, `phone-verification`,
+  `scheduled-messages`, `scheduled-announcements`, `event-reminder-switch`, `reminder-opt-out`,
+  `waitlist-queue`, `meeting-sync`) each need the **shared docker infra up**
+  (`../eventa-api/docker-compose.yml`) with migrations applied — each publishes to its own isolated
+  `*.test` exchange/queue, and `jest-e2e.json` pins `maxWorkers: 1` so they do not collide.
+  `meeting-sync` runs with `CALENDAR_PROVIDER=fake` (nothing reaches Google) and needs eventa-api's
+  migrations through 0075 (`calendar_connections`).
 - Prettier: **single quotes, trailing commas everywhere**.
 
 ## Target architecture (from the docs — governs code you add; much of it is built already)
@@ -137,17 +176,18 @@ every commit and PR.
 Follow the development guide when implementing. The rules that are easy to get wrong:
 
 - **Modules mirror the api's domain names, but are handler-shaped.** `src/modules/<domain>/` uses the same
-  bounded-context names as `eventa-api`: today `access`, `account-deletion`, `auth`, `auth-password`,
-  `auth-signup`, `auth-two-factor`, `event-program`, `events`, `invitations`, `payments`, `registration`,
-  `users`, `waitlist`, plus the job modules `order-expiry`, `scheduled-announcements`,
-  `scheduled-messages`. (The development guide's `engagement/`, `meetings/` and `insights/` worker folders
-  do **not** exist here, and no projection builder has been written yet.) Each event gets a handler + a zod
-  schema, e.g. `registration/registration-confirmed.handler.ts` + `registration-confirmed.schema.ts`.
+  bounded-context names as `eventa-api`: today `access`, `account-deletion`, `auth`,
+  `auth-booking-signup`, `auth-password`, `auth-signup`, `auth-two-factor`, `event-program`, `events`,
+  `invitations`, `meetings`, `payments`, `registration`, `users`, `waitlist`, plus the job modules
+  `order-expiry`, `scheduled-announcements`, `scheduled-messages`. (The development guide's
+  `engagement/` and `insights/` worker folders do **not** exist here, and no projection builder has been
+  written yet.) Each event gets a handler + a zod schema, e.g. `registration/registration-confirmed.handler.ts` +
+  `registration-confirmed.schema.ts`.
   **Do not** structure folders by capability (`handlers/`, `email/`) — channel clients are **injected**:
-  `EmailProvider` from `src/common/email/`, `SmsProvider` from `src/common/sms/` (there is no
-  `src/common/providers/` folder — that is the docs' name for a layout that was never built — and no
-  calendar provider yet). Cross-cutting code lives in
-  `src/common/{db,email,idempotency,logging,messaging,sms,time}`; tenant scoping is the
+  `EmailProvider` from `src/common/email/`, `SmsProvider` from `src/common/sms/`, `CalendarProvider`
+  from `src/common/calendar/` (there is no `src/common/providers/` folder — that is the docs' name for a
+  layout that was never built). Cross-cutting code lives in
+  `src/common/{calendar,constants,crypto,db,email,idempotency,logging,messaging,sms,time}`; tenant scoping is the
   `src/db/tenant.ts` helper and metrics are `src/metrics/` — there is no `common/tenancy/` or
   `common/telemetry/`.
 - **Every handler is idempotent.** Messages can be redelivered; dedupe on the event/message id so a repeat
@@ -156,8 +196,8 @@ Follow the development guide when implementing. The rules that are easy to get w
 - **Tolerant reader.** Validate every message with its zod schema; ignore unknown fields; payloads carry a
   `version` for breaking-change overlap. Never trust the wire shape.
 - **This service does not own the schema.** It may write only **agreed read-model / log tables** plus the
-  four ADR-14 aggregate tables listed above; all migrations live in `eventa-api`. Don't add migrations
-  here.
+  four ADR-14 aggregate tables and the ADR-15 meeting/calendar-connection columns listed above; all
+  migrations live in `eventa-api`. Don't add migrations here.
 - **Carry tenant + correlation context off the message.** Scope every read-model write by the message's
   `organization_id`; propagate the correlation id (originated in the api's HTTP request, passed through the
   RabbitMQ message) into logs and OpenTelemetry spans on each handler.
@@ -176,23 +216,23 @@ this is the enforced summary, tailored to the consumer service. (Stack-adapted �
 
 **SOLID & responsibilities**
 - **Single Responsibility** — one job per class: `*.handler` = decode/validate/delegate/ack; service =
-  workflow orchestration; repository = DB access (read models, plus the ADR-14 writes listed above);
-  provider = a channel (email/sms); `*.schema` = message validation. Never mix.
+  workflow orchestration; repository = DB access (read models, plus the ADR-14/ADR-15 writes listed
+  above); provider = a channel (email/sms/calendar); `*.schema` = message validation. Never mix.
 - **Dependency Inversion** — handlers/services depend on **abstractions**: the injected `EmailProvider`
-  (`common/email`) and `SmsProvider` (`common/sms`) ports and repository classes, never on concrete
-  SMTP/AMQP/DB clients.
+  (`common/email`), `SmsProvider` (`common/sms`) and `CalendarProvider` (`common/calendar`) ports and
+  repository classes, never on concrete SMTP/AMQP/DB/HTTP clients.
 - **Open/Closed** — extend via strategy/polymorphism (e.g. a provider registry), not long `if/else`.
 
 **Structure & layering**
 - **Feature-first, never layer-first** — `src/modules/<name>/` mirrors the api's module names; a module owns
   its `*.handler` · `*.schema` · service · repository. **Never** top-level `handlers/`·`services/` folders;
-  channel clients live in `common/email` · `common/sms`, injected. The full layout and rules are in
+  channel clients live in `common/email` · `common/sms` · `common/calendar`, injected. The full layout and rules are in
   **Creating a module** below; follow it whenever you add one.
 
 - **Thin handlers** — a handler only: parse → **validate (tolerant reader / zod)** → delegate → ack; on
   failure nack → retry → DLQ. **No business logic** inline.
-- **Services orchestrate**; **repositories** do only agreed read-model access, plus the ADR-14 writes
-  enumerated above (this service does **not** own the schema — `eventa-api` does).
+- **Services orchestrate**; **repositories** do only agreed read-model access, plus the ADR-14 and ADR-15
+  writes enumerated above (this service does **not** own the schema — `eventa-api` does).
 - **DTOs/schemas at the edge** — validate every message with its zod schema; never trust the wire shape.
 
 ### Creating a module (follow this exactly — mirrors eventa-api)
@@ -200,7 +240,8 @@ this is the enforced summary, tailored to the consumer service. (Stack-adapted �
 **1. Name it after the api module whose events it consumes**, so the two repos line up 1:1. Modules are
 **flat siblings** under `src/modules/` — never nested inside another module — and related ones share a
 **prefix**: `auth` (`identity.signed_in`), `auth-signup` (`identity.email_verification_requested`),
-`auth-password` (`identity.password_reset_requested`), `events` (the `events.*` family). When the api splits
+`auth-booking-signup` (`identity.booking_account_link_requested`), `auth-password`
+(`identity.password_reset_requested`), `events` (the `events.*` family). When the api splits
 a context, split the matching consumer here too.
 
 **2. Lay it out like this** — `<name>.module.ts` plus one **descriptively named** handler per routing key
@@ -210,7 +251,7 @@ a context, split the matching consumer here too.
 src/modules/<name>/
 ├── <name>.module.ts          # wiring only; providers are plain
 ├── <event>.handler.ts        # one per routing key — thin: validate → delegate → ack
-├── <event>.schema.ts         # the zod tolerant reader + the exported routing-key const
+├── <event>.schema.ts         # the zod tolerant reader (routing key in src/common/constants/<name>.constants.ts)
 ├── <name>.repository.ts      # agreed read-model access only (the API owns the schema)
 └── <shared>.ts               # helpers shared by this module's handlers (e.g. broadcast-delivery)
 ```
@@ -248,11 +289,15 @@ the DI graph and the dedupe actually work.
 - **Idempotent handlers** — dedupe on event/message id; a redelivery produces no second effect.
 - **Custom, meaningful exceptions**; **enums over magic strings**, **constants over magic numbers**.
 - **No hard-coding** — never inline a literal that has a canonical home. Magic strings → enums / union
-  constants; magic numbers (retry counts, TTLs, prefetch, backoff) → module-level `const`; queue,
-  exchange, routing-key and DLQ names, Redis key prefixes, URLs, credentials → `ConfigService` (zod `Env`)
-  or a shared constants module, **never** a bare string or `process.env` in handler code. Event **routing
-  keys and payload field names come from the shared contract** (the producer's `*.event.ts` / the zod
-  schema), never re-typed literals. If a literal appears twice, or carries meaning, name it once.
+  constants; magic numbers (retry counts, TTLs, prefetch, backoff) and fixed messages → a named constant in
+  `src/common/constants/<module>.constants.ts` (one file per module; a constant that needs its module's own
+  types or functions stays beside them — `common` never imports from `src/modules`); queue,
+  exchange and DLQ names, Redis key prefixes, URLs, credentials → `ConfigService` (zod `Env`), **never** a
+  bare string or `process.env` in handler code. Event **routing keys** are named constants in
+  `src/common/constants/<module>.constants.ts`, mirroring the producer's constant in eventa-api's
+  `src/common/constants/<module>.constants.ts` (same value, declared here — never imported from the api);
+  **payload field names** come from the consumer's own zod schema. Neither is ever a re-typed literal. If a
+  literal appears twice, or carries meaning, name it once.
 - **Side effects run through injected providers** — the service *is* the side-effect path; keep the core of
   each handler focused and delegate email/SMS/calendar to providers.
 - **Transactions** for multi-row read-model writes.

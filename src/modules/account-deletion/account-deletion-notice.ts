@@ -1,6 +1,7 @@
 import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import type { Locale } from '../../db/schema/events';
 import { formatWhen } from '../registration/confirmation-email';
+import { NOTICE_TIMEZONE } from '../../common/constants/account-deletion.constants';
 
 /**
  * The account-closure notice, in English and Thai (US-DISC-14).
@@ -35,9 +36,6 @@ import { formatWhen } from '../registration/confirmation-email';
  *   account — and a name of "Support +66 81 234 5678" would put a number a
  *   phone turns into `tel:` there, carrying no URL punctuation to catch.
  */
-
-/** Account mail has no event behind it, so it is dated in Thailand. */
-const NOTICE_TIMEZONE = 'Asia/Bangkok';
 
 export interface ClosureNotice {
   locale: Locale;

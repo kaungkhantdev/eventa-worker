@@ -1,10 +1,12 @@
 import {
-  WAITLIST_OFFERED,
-  WAITLIST_OFFER_EXPIRED,
   offerExpiredEvent,
   payUrlFor,
   waitlistOfferedEvent,
 } from './waitlist-events';
+import {
+  WAITLIST_OFFERED,
+  WAITLIST_OFFER_EXPIRED,
+} from '../../common/constants/waitlist.constants';
 
 const NOW = new Date('2026-08-01T03:00:00.000Z');
 const UNTIL = new Date('2026-08-02T03:00:00.000Z');

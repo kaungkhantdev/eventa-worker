@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-/** Routing key eventa-api publishes when an organizer turns a sign-up down. */
-export const REGISTRATION_REJECTED = 'registration.rejected';
-
 /**
  * Tolerant reader for `registration.rejected` (US-REG-02): only the fields the
  * handler uses are required, so a producer that adds one does not dead-letter

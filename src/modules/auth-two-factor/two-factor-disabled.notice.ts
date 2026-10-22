@@ -1,5 +1,9 @@
 import { DEFAULT_LOCALE } from '../../common/messaging/locale';
 import type { Locale } from '../../db/schema/events';
+import {
+  BCP47,
+  NOTICE_TIMEZONE,
+} from '../../common/constants/auth-two-factor.constants';
 
 /**
  * The "two-factor was turned off" security alert, in English and Thai
@@ -38,16 +42,6 @@ import type { Locale } from '../../db/schema/events';
  * The claim is about what the reader's client does with the text, not only
  * about what this file writes into it.
  */
-
-/**
- * Security alerts are stamped in Thailand's time, whatever the reader's own
- * clock says — the same rule receipts follow. The timestamp crosses the bus in
- * UTC; this is the only place it becomes a wall clock.
- */
-const NOTICE_TIMEZONE = 'Asia/Bangkok';
-
-/** BCP-47 tag per locale; `th-TH` also gives a Thai reader the Buddhist era. */
-const BCP47: Record<Locale, string> = { en: 'en-GB', th: 'th-TH' };
 
 export interface TwoFactorDisabledNotice {
   /**

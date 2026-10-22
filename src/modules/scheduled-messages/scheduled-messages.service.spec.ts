@@ -89,6 +89,11 @@ describe('ScheduledMessagesService (US-MSG-01/08)', () => {
       });
     });
 
+    it('honours each attendee’s own "Event reminders" switch (US-DISC-12)', async () => {
+      await build().sendReminders();
+      expect(sender.send.mock.calls[0][5]).toBe('reminder');
+    });
+
     it('names an online event by its note, not a blank venue', async () => {
       runs.remindersDue.mockResolvedValue([
         {
@@ -111,6 +116,11 @@ describe('ScheduledMessagesService (US-MSG-01/08)', () => {
       expect(sender.send.mock.calls[0][3]).toMatchObject({
         survey_url: 'https://web.test/portal/survey?event=e-1',
       });
+    });
+
+    it('reaches everybody who attended — no attendee switch names it', async () => {
+      await build().sendThankYous();
+      expect(sender.send.mock.calls[0][5]).toBeUndefined();
     });
   });
 

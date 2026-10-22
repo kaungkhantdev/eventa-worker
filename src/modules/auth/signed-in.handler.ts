@@ -4,11 +4,8 @@ import {
   ValidatedHandler,
 } from '../../rabbitmq/message-handler.interface';
 import { AuditRepository } from './audit.repository';
-import {
-  IDENTITY_SIGNED_IN,
-  signedInSchema,
-  type SignedInEvent,
-} from './signed-in.schema';
+import { signedInSchema, type SignedInEvent } from './signed-in.schema';
+import { IDENTITY_SIGNED_IN } from '../../common/constants/auth.constants';
 
 /**
  * Handles `identity.signed_in`: writes the sign-in to the audit trail — the side

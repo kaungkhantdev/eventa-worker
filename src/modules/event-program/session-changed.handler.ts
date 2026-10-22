@@ -26,7 +26,6 @@ import {
   type Change,
 } from './session-change-notice';
 import {
-  PROGRAM_SESSION_CHANGED,
   type SessionChangedEvent,
   sessionChangedSchema,
 } from './session-changed.schema';
@@ -36,6 +35,7 @@ import {
   whenText,
   whereMoved,
 } from './session-sitting';
+import { PROGRAM_SESSION_CHANGED } from '../../common/constants/event-program.constants';
 
 /** The before→after "when", in each language, rendered once for the batch. */
 type WhenByLocale = Record<Locale, Change<string>>;

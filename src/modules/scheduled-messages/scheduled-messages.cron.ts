@@ -2,9 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ScheduledMessagesService } from './scheduled-messages.service';
 import { safeError } from '../../common/logging/safe-error';
-
-/** The registered job name, so it can be inspected or stopped via SchedulerRegistry. */
-export const SCHEDULED_MESSAGES_JOB = 'scheduled-messages';
+import { SCHEDULED_MESSAGES_JOB } from '../../common/constants/scheduled-messages.constants';
 
 /**
  * Sends the reminders and thank-yous on a schedule (US-MSG-01/08).

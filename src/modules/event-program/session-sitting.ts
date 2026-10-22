@@ -1,5 +1,12 @@
 import type { Locale } from '../../db/schema/events';
 import { formatWhen } from '../registration/confirmation-email';
+import {
+  DATE_KEY_LENGTH,
+  EN_DASH,
+  HOUR_MINUTE_LENGTH,
+  HOUR_MINUTE_SECOND,
+  UTC,
+} from '../../common/constants/event-program.constants';
 
 /**
  * Where and when a session sits — the four fields US-PROG-03 treats as a
@@ -21,13 +28,6 @@ export interface EventClock {
   startAt: Date;
   timezone: string;
 }
-
-/** `9:05` or `09:05:00` — the hour may arrive unpadded, the seconds absent. */
-const HOUR_MINUTE_SECOND = /^\d{1,2}:\d{2}(:\d{2})?$/;
-
-/** `2026-10-12`. */
-const DATE_KEY_LENGTH = 10;
-const HOUR_MINUTE_LENGTH = 5;
 
 export function whenMoved(
   before: SessionSitting,
@@ -89,14 +89,6 @@ export function whenText(
     ? `${start}${EN_DASH}${hourMinute(sitting.endTime)}`
     : start;
 }
-
-/**
- * Rendering timezone, not the event's: the wall clock is already the event's
- * local time, so pinning the formatter to UTC passes it through unshifted.
- */
-const UTC = 'UTC';
-/** An en dash between the two times, as a range takes rather than a hyphen. */
-const EN_DASH = '–';
 
 /** `2026-10-12` for day 1, the next calendar day for day 2, and so on. */
 function dayOfEvent(clock: EventClock, day: number): string {

@@ -14,10 +14,10 @@ import {
   twoFactorDisabledSubject,
 } from './two-factor-disabled.notice';
 import {
-  IDENTITY_TWO_FACTOR_DISABLED,
   type TwoFactorDisabledEvent,
   twoFactorDisabledSchema,
 } from './two-factor-disabled.schema';
+import { IDENTITY_TWO_FACTOR_DISABLED } from '../../common/constants/auth-two-factor.constants';
 
 /**
  * Handles `identity.two_factor_disabled` (US-SET-03): alerts the account holder

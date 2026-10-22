@@ -2,9 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OrderExpiryService } from './order-expiry.service';
 import { safeError } from '../../common/logging/safe-error';
-
-/** The registered job name, so it can be inspected or stopped via SchedulerRegistry. */
-export const ORDER_EXPIRY_JOB = 'order-expiry';
+import { ORDER_EXPIRY_JOB } from '../../common/constants/order-expiry.constants';
 
 /**
  * Runs the expiry sweep on a schedule (US-DISC-05).

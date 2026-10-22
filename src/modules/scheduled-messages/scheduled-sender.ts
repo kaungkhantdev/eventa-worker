@@ -4,8 +4,12 @@ import { IdempotencyService } from '../../common/idempotency/idempotency.service
 import { fill, pickWording } from '../../common/messaging/merge-fields';
 import { MessageTemplatesRepository } from '../../common/messaging/message-templates.repository';
 import type { Locale } from '../../db/schema/events';
+import type { NotificationCategory } from '../../db/schema/settings';
 import { deliverToEach } from '../events/broadcast-delivery';
-import { EventRecipientsRepository } from '../events/event-recipients.repository';
+import {
+  EventRecipientsRepository,
+  type Recipient,
+} from '../events/event-recipients.repository';
 import {
   ScheduledMessagesRepository,
   type DueEvent,
@@ -33,7 +37,8 @@ export type Compose = (input: {
 }) => Composed;
 
 /**
- * Sends one scheduled message to every confirmed attendee of one event.
+ * Sends one scheduled message to every confirmed attendee of one event — less
+ * anybody who switched that message off in their own settings.
  *
  * Shared by the reminder and the thank-you, because everything except WHAT
  * they say is the same: claim the run, read the attendees and their languages
@@ -59,6 +64,11 @@ export class ScheduledSender {
    * Returns false when the organizer has switched this message off — and in
    * that case does NOT mark the run done, so switching it back on inside the
    * window still reaches people.
+   *
+   * `preference` names the attendee's OWN switch for this message, where they
+   * have one (US-DISC-12): whoever turned it off is left out, and the run
+   * still finishes, because nobody was missed. A message no setting of theirs
+   * names — the thank-you — passes none and reaches everybody.
    */
   async send(
     event: DueEvent,
@@ -66,15 +76,19 @@ export class ScheduledSender {
     now: Date,
     fields: Record<string, string>,
     compose: Compose,
+    preference?: NotificationCategory,
   ): Promise<boolean> {
     if (!(await this.templates.isActive(event.organizationId, kind))) {
       return false;
     }
     await this.runs.claim(event, kind, now);
 
-    const recipients = await this.recipients.confirmedRecipients(
-      event.organizationId,
-      event.eventId,
+    const recipients = await this.withoutOptOuts(
+      await this.recipients.confirmedRecipients(
+        event.organizationId,
+        event.eventId,
+      ),
+      preference,
     );
     const [own, fallback, wording] = await Promise.all([
       this.recipients.attendeeLocales(recipients.map((r) => r.email)),
@@ -117,5 +131,18 @@ export class ScheduledSender {
     // Marked done ONLY when nobody was missed; otherwise the next run resumes.
     if (failed === 0) await this.runs.complete(event, kind, now);
     return true;
+  }
+
+  /** Everybody, less whoever switched `preference` off for themselves. */
+  private async withoutOptOuts(
+    recipients: Recipient[],
+    preference: NotificationCategory | undefined,
+  ): Promise<Recipient[]> {
+    if (!preference || recipients.length === 0) return recipients;
+    const off = await this.recipients.emailOptOuts(
+      recipients.map((r) => r.email),
+      preference,
+    );
+    return recipients.filter((r) => !off.has(r.email));
   }
 }
